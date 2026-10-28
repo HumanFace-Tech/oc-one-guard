@@ -18,9 +18,10 @@ An OpenCode plugin that checks proposed tool calls for possible data exfiltratio
 - Setup is opt-in. Cloning this repo does not register the plugin or change OpenCode configuration.
 - The judge receives rendered tool arguments and, in some cases, staged file contents. Pick an endpoint you trust.
 
-## Want the Picture?
+## How Does the Check Work?
 
-Open `docs/explainer.html` from your checkout in a browser, or [download it](https://raw.githubusercontent.com/HumanFace-Tech/oc-one-guard/main/docs/explainer.html) and open the saved file. It covers the flow, examples, and limits without the configuration dump. GitHub shows HTML source, not a live page.
+- [Read the short explainer](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.md) - Markdown with a flow diagram, right here on GitHub.
+- [Open the visual walkthrough](https://htmlpreview.github.io/?https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.html) - rendered HTML via third-party HTMLPreview. No download needed.
 
 ## Where to Go Next?
 

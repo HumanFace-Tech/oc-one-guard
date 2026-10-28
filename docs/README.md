@@ -1,6 +1,6 @@
 # Documentation
 
-Start with the [project explainer](explainer.html) for a visual introduction. Download or open the HTML file locally - GitHub shows its source rather than rendering it. The practical guides are here:
+Start with the GitHub-native [Markdown explainer](explainer.md) for the short version, or [preview the visual walkthrough](https://htmlpreview.github.io/?https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.html) through third-party HTMLPreview. You can also open [the HTML file](explainer.html) locally without using a preview service. The practical guides are here:
 
 - [Installation](installation.md) - register the plugin explicitly and recover if it blocks work.
 - [Configuration](configuration.md) - configuration sources, precedence, fields, and decision thresholds.

@@ -19,6 +19,7 @@ This file gives coding agents and contributors repository-specific rules. The so
 
 ## Project map
 
+- Start with [the Markdown explainer](docs/explainer.md) for the guard's flow and limits. Keep it consistent with `docs/explainer.html`; agents should read the local Markdown, not the third-party HTML preview.
 - `index.js` is the OpenCode plugin entry point and hook registration.
 - `src/config.js` and `src/defaults.js` load, validate, and normalize policy.
 - `src/guard.js`, `src/state.js`, and `src/written.js` evaluate calls and track selected file mutations.
