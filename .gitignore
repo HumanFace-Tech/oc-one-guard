@@ -1,0 +1,19 @@
+# Local policy and credentials
+/config.json
+/config.jsonc
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+
+node_modules/
+coverage/
+artifacts/
+test-results/
+*.log
+*.jsonl
+*.jsonl.*
+*.tgz
+.DS_Store

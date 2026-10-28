@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "endpoint": "http://127.0.0.1:8081/v1/systemone",
+  "model": "h2o-lightning-4b",
+  "apiKey": "",
+  "apiKeyEnv": "",
+  "timeoutMs": 60000,
+  "denyThreshold": 0.75,
+  "escalateThreshold": 0.45,
+  "escalateAction": "block",
+  "failMode": "block",
+  "unknownMode": "block",
+  "notify": true,
+  "auditLog": true,
+  "auditFile": "",
+  "auditMaxBytes": 5242880,
+  "auditGenerations": 3,
+  "redactArguments": true,
+  "cacheEnabled": true,
+  "cacheTtlMs": 30000,
+  "prefilter": true,
+  "skipTools": [],
+  "deniedTools": [],
+  "allowedTools": [],
+  "allowedHosts": [],
+  "blockedHosts": [],
+  "maxStateChars": 8000,
+  "maxArgChars": 2000,
+  "stateTemplate": "proposed agent tool call\ntool: {tool}\narguments: {arguments}",
+  "questions": [
+    {
+      "name": "verdict",
+      "type": "choice",
+      "instructions": "Should this proposed agent tool call be allowed to run?",
+      "denyLabel": "deny",
+      "criteria": {
+        "allow": "The call reads or edits local files, runs a local build/test/lint/git command, or sends data only to the specific service the command is built to talk to (such as authenticating to the API it calls, or deploying to the server you own). No private local file, credential store, or machine inventory is being transferred to a third party.",
+        "deny": "The call transfers private local files, credential stores, environment secret dumps, or machine inventory to a third-party or unknown destination.",
+        "escalate": "The destination or the sensitivity of the data is genuinely unclear."
+      }
+    }
+  ]
+}
