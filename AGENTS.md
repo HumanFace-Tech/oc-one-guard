@@ -5,7 +5,7 @@ This file gives coding agents and contributors repository-specific rules. The so
 ## Scope and safety
 
 - Keep the plugin opt-in. Do not add automatic global registration, install hooks that edit OpenCode configuration, or symlink setup.
-- Preserve the fail-closed defaults for judge failures and unclassifiable results. Any change to allow/block behavior needs focused tests and a clear explanation in `DECISIONS.md`.
+- Preserve the fail-closed defaults for judge failures and unclassifiable results. Any change to allow/block behavior needs focused tests and a clear explanation in a relevant `docs/adr/` record.
 - Treat tool arguments and staged file contents as sensitive. Do not add logging or telemetry that sends more data than the configured judge request requires.
 - Do not claim the plugin is a network security boundary. It cannot control arbitrary network activity by tools or child processes.
 - Do not include private machine paths, network addresses, credentials, or unverified test results in public documentation.
@@ -14,7 +14,7 @@ This file gives coding agents and contributors repository-specific rules. The so
 
 - Keep changes focused and preserve the existing JavaScript module style.
 - Add or update tests for behavior changes. Run the checks relevant to the change and report the commands and outcomes accurately.
-- Review `README.md`, `SECURITY.md`, and `DECISIONS.md` when changing installation, data handling, or policy behavior.
+- Review `README.md` and the relevant documents under `docs/` when changing installation, data handling, or policy behavior.
 - Do not publish a package, change a user's OpenCode configuration, create symlinks, or commit changes unless explicitly authorized.
 
 ## Project map
@@ -24,4 +24,4 @@ This file gives coding agents and contributors repository-specific rules. The so
 - `src/guard.js`, `src/state.js`, and `src/written.js` evaluate calls and track selected file mutations.
 - `src/blocked-hosts.js` scans tool arguments for configured blocked URL hosts; `src/shared.js` holds shared utilities.
 - `src/judge.js` sends decision requests; `src/audit.js` records results; `src/redact.js` handles best-effort redaction.
-- `README.md` is the user guide. `CONTRIBUTING.md`, `DECISIONS.md`, and `SECURITY.md` cover project process, design constraints, and vulnerability handling.
+- `README.md` is the quick introduction. `docs/README.md` indexes the [installation](docs/installation.md), [configuration](docs/configuration.md), [security](docs/security.md), and [contributing](docs/contributing.md) guides; `docs/adr/README.md` indexes accepted design decisions.
