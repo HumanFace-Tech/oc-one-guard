@@ -7,5 +7,7 @@ Start with the GitHub-native [Markdown explainer](explainer.md) for the short ve
 - [Security and data handling](security.md) - what the plugin sends, stores, and cannot protect against.
 - [Contributing](contributing.md) - development checks and review expectations.
 - [Architecture decisions](adr/README.md) - accepted decisions and their tradeoffs.
+- [Decision-model formats research](research/decision-model-formats-report.md) - current `noul`, `choice`, and `score` behavior, available evidence, and a proposed evaluation plan.
+- [Release checklist](release-checklist.md) - small, explicit follow-ups for testing, npm distribution, and compatibility.
 
 The [root README](../README.md) is the quick introduction. Runtime behavior and tests remain the source of truth.

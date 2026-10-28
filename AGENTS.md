@@ -26,3 +26,4 @@ This file gives coding agents and contributors repository-specific rules. The so
 - `src/blocked-hosts.js` scans tool arguments for configured blocked URL hosts; `src/shared.js` holds shared utilities.
 - `src/judge.js` sends decision requests; `src/audit.js` records results; `src/redact.js` handles best-effort redaction.
 - `README.md` is the quick introduction. `docs/README.md` indexes the [installation](docs/installation.md), [configuration](docs/configuration.md), [security](docs/security.md), and [contributing](docs/contributing.md) guides; `docs/adr/README.md` indexes accepted design decisions.
+- For research on decision response formats and their evaluation limits, see [the decision-model formats report](docs/research/decision-model-formats-report.md). It records evidence and proposals, not runtime configuration or approved behavior changes.
