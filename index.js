@@ -19,6 +19,7 @@ import { scanBlockedHosts } from "./src/blocked-hosts.js"
 import { redactText } from "./src/redact.js"
 import { beginMutation, endMutation } from "./src/written.js"
 import { createStopController } from "./src/stop.js"
+import { createScope } from "./src/scope.js"
 
 export const id = "oc-one-guard"
 
@@ -58,7 +59,7 @@ function blockedMessage(decision, tool, args, redact) {
 /**
  * The OpenCode plugin entry point.
  *
- * @param {{client: object, directory?: string}} input OpenCode v1 host context (only consumed fields).
+ * @param {{client: object, directory?: string, worktree?: string, project?: {id?: string, vcs?: string}}} input OpenCode v1 host context.
  * @param {Record<string, unknown>} [options]
  */
 export async function server(input, options) {
@@ -66,17 +67,18 @@ export async function server(input, options) {
   // that throws while loading, which would leave every tool call
   // unrestricted. `resolveConfig` falls back to the fail-closed defaults.
   const config = resolveConfig(options)
+  const scope = createScope(input)
 
   const audit = createAuditLogger(config, input.client)
-  const guard = createGuard(config, { writeAudit: audit, directory: input.directory })
+  const guard = createGuard(config, { writeAudit: audit, directory: input.directory, scope })
   const pending = new Map()
   const finish = key => {
-    for (const token of pending.get(key) ?? []) endMutation(token)
+    for (const token of pending.get(key) ?? []) endMutation(token, scope)
     pending.delete(key)
   }
   const remove = (key, token) => {
     if (!token) return
-    endMutation(token)
+    endMutation(token, scope)
     const tokens = pending.get(key)
     if (!tokens) return
     const remaining = tokens.filter(item => item !== token)
@@ -151,7 +153,7 @@ export async function server(input, options) {
 
       const mutation = config.enabled && ["write", "edit", "apply_patch"].includes(tool)
       const key = typeof hookInput.sessionID === "string" && typeof hookInput.callID === "string" ? `${hookInput.sessionID}\0${hookInput.callID}` : undefined
-      const token = mutation ? beginMutation() : undefined
+      const token = mutation ? beginMutation(scope) : undefined
       if (token && key) {
         const tokens = pending.get(key) ?? []
         tokens.push(token)

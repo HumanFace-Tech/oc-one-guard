@@ -5,11 +5,18 @@ import { join } from "node:path"
 import { redactText, redactArgs } from "../src/redact.js"
 import { createAuditLogger } from "../src/audit.js"
 import { scanBlockedHosts } from "../src/blocked-hosts.js"
-import { renderState, hasOutboundSurface, extractHosts } from "../src/state.js"
-import { recordWrite, refreshWrite, resetWrites, hasUncertainPatch } from "../src/written.js"
+import { renderState as render, hasOutboundSurface as outbound, extractHosts } from "../src/state.js"
+import { recordWrite as record, refreshWrite as refresh, resetWrites, hasUncertainPatch as uncertain } from "../src/written.js"
+import { createScope } from "../src/scope.js"
 import { config, fixture } from "./helpers.js"
 
-beforeEach(resetWrites)
+const scope = createScope()
+const renderState = input => render({ ...input, scope })
+const hasOutboundSurface = (tool, args) => outbound(tool, args, undefined, scope)
+const recordWrite = (path, content) => record(path, content, undefined, scope)
+const refreshWrite = path => refresh(path, scope)
+const hasUncertainPatch = () => uncertain(scope)
+beforeEach(() => resetWrites(scope))
 
 for (const text of [
   "Authorization: Bearer synthetic-secret", "password=synthetic-secret",

@@ -22,7 +22,7 @@ This file gives coding agents and contributors repository-specific rules. The so
 - Start with [the Markdown explainer](docs/explainer.md) for the guard's flow and limits. Keep it consistent with `docs/explainer.html`; agents should read the local Markdown, not the third-party HTML preview.
 - `index.js` is the OpenCode plugin entry point and hook registration.
 - `src/config.js` and `src/defaults.js` load, validate, and normalize policy.
-- `src/guard.js`, `src/state.js`, and `src/written.js` evaluate calls and track selected file mutations; `src/stop.js` requests best-effort cancellation of a classified high-risk conversation run.
+- `src/guard.js`, `src/state.js`, and `src/written.js` evaluate calls and track selected file mutations; `src/scope.js` derives explicit worktree or fallback-directory scopes; `src/stop.js` requests best-effort cancellation of a classified high-risk conversation run.
 - `src/blocked-hosts.js` scans tool arguments for configured blocked URL hosts; `src/shared.js` holds shared utilities.
 - `src/judge.js` sends decision requests; `src/audit.js` records results; `src/redact.js` handles best-effort redaction.
 - `README.md` is the quick introduction. `docs/README.md` indexes the [installation](docs/installation.md), [configuration](docs/configuration.md), [security](docs/security.md), and [contributing](docs/contributing.md) guides; `docs/adr/README.md` indexes accepted design decisions.

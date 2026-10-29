@@ -9,3 +9,4 @@ These records describe accepted design constraints. The implementation and tests
 - [0005 - Treat detection as a heuristic](0005-heuristic-not-egress-control.md)
 - [0006 - Preserve an external disable path](0006-external-disable-path.md)
 - [0007 - Risk bands and best-effort run cancellation](0007-risk-bands-and-run-cancellation.md)
+- [0008 - Scope in-process state to projects](0008-project-state-scoping.md)

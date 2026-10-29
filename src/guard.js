@@ -17,16 +17,17 @@ import { posix } from "node:path"
 
 import { denyProbability, findDenyOption, JudgeError, requestDecision } from "./judge.js"
 import { sharedCache } from "./shared.js"
+import { requireScope } from "./scope.js"
 import { extractHosts, fullText, hasOutboundSurface, hasTransferPrimitive, renderState, runsLocalScript } from "./state.js"
 import { getWrite, recordWrite, referencedWrites, writesRevision, markUncertainPatch, hasUncertainPatch, refreshWrite, hasWrites, ambiguousPath, hasPendingMutation } from "./written.js"
 
 // Patch headers are line-oriented. Never interpret content lines as paths.
-function trackMutation(tool, args, directory) {
+function trackMutation(tool, args, directory, scope) {
   const knownDirectory = typeof directory === "string" && posix.isAbsolute(directory)
-  const lookup = path => getWrite(path, directory)
+  const lookup = path => getWrite(path, directory, scope)
   const uncertainPath = path => {
-    if (!knownDirectory && typeof path === "string" && !posix.isAbsolute(path)) markUncertainPatch()
-    if (ambiguousPath(path, directory)) markUncertainPatch()
+    if (!knownDirectory && typeof path === "string" && !posix.isAbsolute(path)) markUncertainPatch(scope)
+    if (ambiguousPath(path, directory)) markUncertainPatch(scope)
   }
   if (tool === "write" || tool === "edit") {
     const path = args?.filePath
@@ -34,13 +35,13 @@ function trackMutation(tool, args, directory) {
     uncertainPath(path)
     const content = writeContent(tool, args)
     if (!ambiguousPath(path, directory) && (lookup(path) || hasTransferPrimitive(content))) {
-      recordWrite(path, null, directory)
+      recordWrite(path, null, directory, scope)
     }
     return
   }
   if (tool !== "apply_patch") return
   const patch = typeof args?.patchText === "string" ? args.patchText : args?.patch
-  if (typeof patch !== "string") { markUncertainPatch(); return }
+  if (typeof patch !== "string") { markUncertainPatch(scope); return }
   const lines = patch.split(/\r?\n/)
   if (lines.at(-1) === "") lines.pop()
   let current
@@ -62,14 +63,14 @@ function trackMutation(tool, args, directory) {
     } else valid = false
   }
   if (!operations.length) valid = false
-  if (!valid) markUncertainPatch()
+  if (!valid) markUncertainPatch(scope)
   for (const op of operations) {
     uncertainPath(op.path)
     if (op.move) uncertainPath(op.move)
     const relevant = lookup(op.path) || (op.move && lookup(op.move)) || hasTransferPrimitive(op.lines.join("\n"))
     if (relevant) {
-      if (!ambiguousPath(op.path, directory)) recordWrite(op.path, null, directory)
-      if (op.move && !ambiguousPath(op.move, directory)) recordWrite(op.move, null, directory)
+      if (!ambiguousPath(op.path, directory)) recordWrite(op.path, null, directory, scope)
+      if (op.move && !ambiguousPath(op.move, directory)) recordWrite(op.move, null, directory, scope)
     }
   }
 }
@@ -132,8 +133,8 @@ export function hostMatches(host, patterns) {
  * complete configuration and effective credentials isolate instances with
  * different policies or judge requests. The state captures staged content.
  */
-export function scopedCacheKey(config, tool, args, state, apiKey, staged) {
-  return createHash("sha256").update(stableStringify({ config, tool, args, state, apiKey, staged })).digest("hex")
+export function scopedCacheKey(config, tool, args, state, apiKey, staged, scope) {
+  return createHash("sha256").update(stableStringify({ config, tool, args, state, apiKey, staged, scope })).digest("hex")
 }
 
 function stableStringify(value) {
@@ -198,6 +199,7 @@ export class GuardDecision {
  * @param {object} deps   Injectable dependencies for testing.
  */
 export function createGuard(config, deps = {}) {
+  const scope = requireScope(deps.scope)
   const now = deps.now ?? (() => Date.now())
   const fetchImpl = deps.fetchImpl
   const writeAudit = deps.writeAudit ?? (() => {})
@@ -267,7 +269,7 @@ export function createGuard(config, deps = {}) {
     }
 
     // Invalidate evidence even if policy later skips this tool or the tool fails.
-    trackMutation(tool, args, deps.directory)
+    trackMutation(tool, args, deps.directory, scope)
 
     if (config.skipTools.includes(tool)) {
       return new GuardDecision({
@@ -301,32 +303,32 @@ export function createGuard(config, deps = {}) {
       const value = word.replace(/^(['"])(.*)\1$/, "$2")
       return value.includes("/") && ambiguousPath(value, directory)
     })
-    if (isShell && ambiguous && (hasWrites() || hasUncertainPatch())) {
+    if (isShell && ambiguous && (hasWrites(scope) || hasUncertainPatch(scope))) {
       const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Ambiguous filesystem path prevents reliable staged-file evidence.", tool, hosts, durationMs: now() - started, mode: "staged-unknown" })
       writeAudit(decision, {})
       return decision
     }
-    const hits = isShell ? referencedWrites(command, directory) : []
+    const hits = isShell ? referencedWrites(command, directory, scope) : []
     const snapshots = new Map(hits.map(hit => {
-      const entry = getWrite(hit.path)
-      const content = entry.content === null ? refreshWrite(hit.path) : entry.content
+      const entry = getWrite(hit.path, undefined, scope)
+      const content = entry.content === null ? refreshWrite(hit.path, scope) : entry.content
       return [hit.path, { ...entry, content: content ?? null }]
     }))
-    const unresolvedScript = runsLocalScript(command) && hasWrites() &&
+    const unresolvedScript = runsLocalScript(command) && hasWrites(scope) &&
       ((!directory && !command.match(/(?:^|\s)\//)) || /(?:^|[;&|]\s*)\s*cd(?:\s|$)|[$`*?\[\]{}\\]/.test(command))
-    const unknownStaged = isShell && (hits.some(hit => snapshots.get(hit.path)?.content === null) || (hasPendingMutation() && (hits.length > 0 || runsLocalScript(command))) || (hasUncertainPatch() && runsLocalScript(command)) || unresolvedScript)
+    const unknownStaged = isShell && (hits.some(hit => snapshots.get(hit.path)?.content === null) || (hasPendingMutation(scope) && (hits.length > 0 || runsLocalScript(command))) || (hasUncertainPatch(scope) && runsLocalScript(command)) || unresolvedScript)
     if (unknownStaged) {
       const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Tracked file content is unknown after a modification.", tool, hosts, durationMs: now() - started, mode: "staged-unknown" })
       writeAudit(decision, {})
       return decision
     }
-    const revision = writesRevision()
-    const snapshotsValid = () => (!(hits.length || runsLocalScript(command)) || !hasPendingMutation()) && [...snapshots].every(([path, snapshot]) => {
-      const entry = getWrite(path)
-      return entry && !ambiguousPath(path) && (entry.content === null ? refreshWrite(path) : entry.content) === snapshot.content
+    const revision = writesRevision(scope)
+    const snapshotsValid = () => (!(hits.length || runsLocalScript(command)) || !hasPendingMutation(scope)) && [...snapshots].every(([path, snapshot]) => {
+      const entry = getWrite(path, undefined, scope)
+      return entry && !ambiguousPath(path) && (entry.content === null ? refreshWrite(path, scope) : entry.content) === snapshot.content
     })
 
-    if (config.prefilter && !hasOutboundSurface(tool, args, directory)) {
+    if (config.prefilter && !hasOutboundSurface(tool, args, directory, scope)) {
       return new GuardDecision({
         verdict: VERDICT.ALLOW,
         reason: `Tool "${tool}" has no outbound surface.`,
@@ -347,6 +349,7 @@ export function createGuard(config, deps = {}) {
       maxArgChars: config.maxArgChars,
       directory,
       staged: snapshots,
+      scope,
       })
     } catch {
       const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Security facts exceed the state limit or could not be rendered.", tool, hosts, durationMs: now() - started, mode: "state-block" })
@@ -354,12 +357,12 @@ export function createGuard(config, deps = {}) {
       return decision
     }
 
-    const staged = referencedWrites(fullText(tool, args), directory).map(hit => snapshots.get(hit.path) ?? getWrite(hit.path))
-    const key = scopedCacheKey(config, tool, args, state, apiKey, staged)
+    const staged = referencedWrites(fullText(tool, args), directory, scope).map(hit => snapshots.get(hit.path) ?? getWrite(hit.path, undefined, scope))
+    const key = scopedCacheKey(config, tool, args, state, apiKey, staged, scope)
     const cached = cacheGet(key)
     if (cached?.pending) {
       const decision = await cached.pending
-      if (isShell && (revision !== writesRevision() || !snapshotsValid())) return evaluate(input)
+      if (isShell && (revision !== writesRevision(scope) || !snapshotsValid())) return evaluate(input)
       return new GuardDecision({ ...decision, durationMs: now() - started, mode: `${decision.mode}:coalesced` })
     }
     if (cached?.value) {
@@ -386,7 +389,7 @@ export function createGuard(config, deps = {}) {
       }
       throw error
     }
-    if (isShell && (revision !== writesRevision() || !snapshotsValid())) {
+    if (isShell && (revision !== writesRevision(scope) || !snapshotsValid())) {
       if (config.cacheEnabled && cache.get(key)?.pending === pending) cache.delete(key)
       return evaluate(input)
     }

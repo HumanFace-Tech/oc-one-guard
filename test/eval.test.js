@@ -2,6 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { controlledFetch, parseArgs, runEvaluation, validateCases } from "../eval/runner.js"
 import { hasWrites } from "../src/written.js"
+import { createScope } from "../src/scope.js"
 import { readFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -26,19 +27,23 @@ test("validates fixture counts and unique schema before any requests", () => {
 })
 
 test("direct and guard score independently, isolate writes and never transmit metadata", async () => {
+  const scope = createScope()
   const requests = []
+  let observedTrackedWrite = false
   const fetchImpl = async (url, init) => {
+    observedTrackedWrite ||= hasWrites(scope)
     requests.push({ url, init, body: JSON.parse(init.body) })
     return { ok: true, status: 200, text: async () => JSON.stringify({ answers: { verdict: { type: "noul", noul: 0.6 } } }) }
   }
-  const report = await runEvaluation({ cases, endpoint, model: "test", limit: 3, apiKey: "secret", fetchImpl })
+  const report = await runEvaluation({ cases, endpoint, model: "test", limit: 3, apiKey: "secret", fetchImpl, scope })
   assert.equal(report.cases.length, 6)
   assert.equal(report.cases.find(row => row.id === "case-1" && row.mode === "guard").source, "prefilter")
   assert.equal(report.summaries.guard.operational.malicious.fnr, 1)
   assert.equal(report.summaries.guard.modelScored.malicious.eligible, 0)
   assert.equal(report.summaries.direct.modelScored.benign.fpr, 1)
   assert.equal(report.cases[0].outcome, "escalate")
-  assert.equal(hasWrites(), false)
+  assert.equal(observedTrackedWrite, true)
+  assert.equal(globalThis[Symbol.for("oc-one-guard.scoped-writes.v1")].has(scope), false)
   assert.equal(requests.length, 5)
   for (const request of requests) {
     assert.equal(request.url, endpoint)

@@ -7,7 +7,8 @@ import { normalizeConfig } from "../src/config.js"
 import { createGuard } from "../src/guard.js"
 import { denyProbability, requestDecision } from "../src/judge.js"
 import { renderState } from "../src/state.js"
-import { resetWrites } from "../src/written.js"
+import { resetWrites, releaseWrites } from "../src/written.js"
+import { createScope } from "../src/scope.js"
 
 const hash = value => createHash("sha256").update(value).digest("hex")
 const labels = ["benign", "malicious", "ambiguous"]
@@ -167,26 +168,26 @@ function isolate(call, root) {
   return { call: { tool: call.tool, args }, isolatedPaths }
 }
 
-export async function runEvaluation({ cases, endpoint, model, mode = "both", limit, apiKey = "", fetchImpl = globalThis.fetch, timeoutMs }) {
+export async function runEvaluation({ cases, endpoint, model, mode = "both", limit, apiKey = "", fetchImpl = globalThis.fetch, timeoutMs, scope = createScope() }) {
   const counts = validateCases(cases)
   parseArgs(["--endpoint", endpoint, "--model", model, "--mode", mode, ...(limit === undefined ? [] : ["--limit", String(limit)])])
   const root = await mkdtemp(join(tmpdir(), "oc-one-eval-"))
   try {
   const config = normalizeConfig({ endpoint, model, apiKey, apiKeyEnv: "", cacheEnabled: false, auditLog: false, auditFile: "", notify: false, ...(timeoutMs ? { timeoutMs } : {}) })
   const safeFetch = controlledFetch(endpoint, fetchImpl, config.timeoutMs)
-  const guard = createGuard(config, { directory: root, fetchImpl: safeFetch, cache: new Map(), writeAudit: () => {} })
+  const guard = createGuard(config, { directory: root, scope, fetchImpl: safeFetch, cache: new Map(), writeAudit: () => {} })
   const rows = []
   for (const item of cases.slice(0, limit ?? cases.length)) {
     const states = {}
     for (const arm of mode === "both" ? ["direct", "guard"] : [mode]) {
-      resetWrites()
+      resetWrites(scope)
       const start = performance.now()
       let source, score = null, outcome = "deny", stop = false, guardMode = null, reason = null, call = item.call, isolatedPaths = [], evaluatedArgs = null
       try {
         if (arm === "guard") ({ call, isolatedPaths } = isolate(item.call, root))
         evaluatedArgs = call.args
         if (arm === "direct") {
-          const state = renderState({ ...call, directory: root, template: config.stateTemplate, maxStateChars: config.maxStateChars, maxArgChars: config.maxArgChars })
+          const state = renderState({ ...call, directory: root, scope, template: config.stateTemplate, maxStateChars: config.maxStateChars, maxArgChars: config.maxArgChars })
           states.direct = state
           const response = await requestDecision({ endpoint, model, state, questions: config.questions, timeoutMs: config.timeoutMs, apiKey, fetchImpl: safeFetch })
           score = denyProbability(config.questions[0], response.answers?.[config.questions[0].name]) ?? null
@@ -206,7 +207,7 @@ export async function runEvaluation({ cases, endpoint, model, mode = "both", lim
           source = decision.mode === "judge" ? "judge" : decision.mode === "prefilter" ? "prefilter" : decision.mode === "state-block" ? "state-block" : decision.mode.startsWith("unknown-") ? "unknown" : decision.mode.startsWith("fail-") ? (decision.reason.includes("timeout") ? "timeout" : "error") : "policy"
         }
       } catch (error) { source = error?.message === "fixture-isolation" ? "fixture-isolation" : error?.kind === "timeout" ? "timeout" : "error" }
-      finally { resetWrites() }
+      finally { resetWrites(scope) }
       rows.push({ id: item.id, family: item.family, tags: item.tags, expected: item.label, rationale: item.rationale, tool: item.call.tool, originalArgs: item.call.args, evaluatedArgs, isolatedPaths, judgeState: states[arm] ?? null, mode: arm, source, guardMode, reason, score, outcome, blocked: outcome !== "allow", stopSignal: stop, latencyMs: Math.round((performance.now() - start) * 100) / 100 })
     }
     if (mode === "both") {
@@ -236,7 +237,7 @@ export async function runEvaluation({ cases, endpoint, model, mode = "both", lim
   const selectedCounts = Object.fromEntries(labels.map(label => [label, selectedCases.filter(item => item.label === label).length]))
   const comparativeCounts = { pairs: agreement.length, bothScored: agreement.filter(pair => pair.bothScored).length, statesComparable: agreement.filter(pair => pair.stateMatch !== null).length, statesMatching: agreement.filter(pair => pair.stateMatch === true).length, outcomesAgree: agreement.filter(pair => pair.outcomeAgreement === true).length }
   return { status: failures || !rows.some(row => row.source === "judge") ? "incomplete" : "complete", scope: "Synthetic single calls only; no tools executed, fixture URLs fetched, multi-step or plugin end-to-end test. Guard filesystem paths may be isolated; direct arguments are unchanged. Guard mutation tracking may change state. Independent model samples and different state limit comparisons. Scores are not calibrated probabilities.", fixtureHash: hash(canonical(cases)), policyHash: hash(canonical(policy)), endpointHash: hash(endpoint), modelHash: hash(model), hashNotes: "Fixture hash uses canonical JSON; policy hash covers normalized nonsecret settings excluding endpoint and model, hashed separately. Model hash identifies its name, not weights or server version. Hashes do not prove reproducibility.", thresholds: { escalate: config.escalateThreshold, deny: config.denyThreshold, stop: config.stopThreshold }, fixtureCounts: counts, selectedCases: selectedCases.length, selectedCounts, summaries, agreement, comparativeCounts, cases: rows }
-  } finally { resetWrites(); await rm(root, { recursive: true, force: true }) }
+  } finally { releaseWrites(scope); await rm(root, { recursive: true, force: true }) }
 }
 
 async function main() {

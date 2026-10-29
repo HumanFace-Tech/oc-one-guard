@@ -7,9 +7,8 @@
  * the URL. Both instances then answer the same tool call, and the judge
  * costs seconds per request, so the verdict must not be computed twice.
  *
- * Only the cache is shared. The configuration is not: each instance keeps
- * its own resolved settings, so a project-level override is never silently
- * discarded because of module load order.
+ * Cache keys include the project scope and effective configuration. Each
+ * instance keeps its own resolved settings.
  *
  * The state is stored on `globalThis` under a `Symbol.for` key so it is
  * shared even when the module itself is instantiated twice.

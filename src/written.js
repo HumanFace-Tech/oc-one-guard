@@ -13,25 +13,29 @@
  * "update index.js"` — hit the judge, and the judge costs seconds per call.
  *
  * The state is process-wide and stored on `globalThis` under a `Symbol.for`
- * key, so both copies of a doubly-loaded plugin see the same writes.
+ * key, partitioned by scope so duplicate instances see the same writes.
  */
 
 import { posix } from "node:path"
 import { constants, openSync, closeSync, fstatSync, readSync, lstatSync } from "node:fs"
+import { requireScope } from "./scope.js"
 
-const FILES_KEY = Symbol.for("oc-one-guard.written-files")
-const REVISION_KEY = Symbol.for("oc-one-guard.written-revision")
-const UNCERTAIN_KEY = Symbol.for("oc-one-guard.uncertain-patch")
-const PENDING_KEY = Symbol.for("oc-one-guard.pending-mutations")
+const STATE_KEY = Symbol.for("oc-one-guard.scoped-writes.v1")
+function state(scope) {
+  requireScope(scope)
+  const scopes = globalThis[STATE_KEY] ??= new Map()
+  if (!scopes.has(scope)) scopes.set(scope, { files: new Map(), revision: 0, uncertain: false, pending: new Set() })
+  return scopes.get(scope)
+}
 
-export function beginMutation() {
-  const pending = globalThis[PENDING_KEY] ??= new Set()
+export function beginMutation(scope) {
+  const pending = state(scope).pending
   const token = Symbol()
   pending.add(token)
   return token
 }
-export function endMutation(token) { globalThis[PENDING_KEY]?.delete(token) }
-export function hasPendingMutation() { return (globalThis[PENDING_KEY]?.size ?? 0) > 0 }
+export function endMutation(token, scope) { state(scope).pending.delete(token) }
+export function hasPendingMutation(scope) { return state(scope).pending.size > 0 }
 
 // Never collapse '..' across a possibly symlinked component or inspect a
 // different lexical path as evidence. Missing components are not symlinks yet.
@@ -58,12 +62,7 @@ const MAX_TRACKED = 100
 /**
  * @returns {Map<string, {path: string, content: string}>}
  */
-function store() {
-  if (!globalThis[FILES_KEY]) {
-    globalThis[FILES_KEY] = new Map()
-  }
-  return globalThis[FILES_KEY]
-}
+function store(scope) { return state(scope).files }
 
 /**
  * Normalise a path for comparison.
@@ -81,34 +80,36 @@ function normalize(path, directory) {
  * @param {string} path
  * @param {string} content
  */
-export function recordWrite(path, content, directory) {
+export function recordWrite(path, content, directory, scope) {
+  requireScope(scope)
   const key = normalize(path, directory)
   if (!key) return
-  const files = store()
+  const files = store(scope)
   const relative = typeof directory === "string" && posix.isAbsolute(directory) && posix.isAbsolute(key) ? posix.relative(directory, key) : undefined
   files.set(key, { path: key, content: typeof content === "string" ? content : null, ...(relative ? { relative } : {}) })
-  globalThis[REVISION_KEY] = (globalThis[REVISION_KEY] ?? 0) + 1
+  state(scope).revision++
   if (files.size > MAX_TRACKED) {
     const oldest = files.keys().next().value
     if (oldest !== undefined) files.delete(oldest)
-    markUncertainPatch()
+    markUncertainPatch(scope)
   }
 }
 
-export function writesRevision() { return globalThis[REVISION_KEY] ?? 0 }
-export function markUncertainPatch() {
-  globalThis[UNCERTAIN_KEY] = true
-  globalThis[REVISION_KEY] = writesRevision() + 1
+export function writesRevision(scope) { return state(scope).revision }
+export function markUncertainPatch(scope) {
+  state(scope).uncertain = true
+  state(scope).revision++
 }
-export function hasUncertainPatch() { return globalThis[UNCERTAIN_KEY] === true }
+export function hasUncertainPatch(scope) { return state(scope).uncertain }
 
 /**
  * Look up a written file by its normalised path.
  */
-export function getWrite(path, directory) {
+export function getWrite(path, directory, scope) {
+  requireScope(scope)
   const key = normalize(path, directory)
   if (!key) return undefined
-  return store().get(key)
+  return store(scope).get(key)
 }
 
 /**
@@ -123,9 +124,10 @@ export function getWrite(path, directory) {
  * @param {string} text
  * @returns {{path: string}[]}
  */
-export function referencedWrites(text, directory) {
+export function referencedWrites(text, directory, scope) {
+  requireScope(scope)
   if (typeof text !== "string" || !text) return []
-  const files = store()
+  const files = store(scope)
   if (!files.size) return []
   const hits = []
   // Resolve literal shell words as paths. Dynamic shell expansion and changes
@@ -154,8 +156,8 @@ export function referencedWrites(text, directory) {
 
 // Refresh from the file itself, never from proposed tool arguments. Limit the
 // read and reject symlinks and non-regular files; failures leave it unknown.
-export function refreshWrite(path) {
-  const entry = getWrite(path)
+export function refreshWrite(path, scope) {
+  const entry = getWrite(path, undefined, scope)
   if (!entry || entry.content !== null || !posix.isAbsolute(entry.path) || ambiguousPath(entry.path)) return
   let fd
   try {
@@ -179,7 +181,7 @@ export function refreshWrite(path) {
   }
 }
 
-export function hasWrites() { return store().size > 0 }
+export function hasWrites(scope) { return store(scope).size > 0 }
 
 /**
  * File names that are too common to be a useful signal on their own.
@@ -208,9 +210,16 @@ const COMMON_NAMES = new Set([
 /**
  * Forget everything. Used by tests.
  */
-export function resetWrites() {
-  store().clear()
-  globalThis[UNCERTAIN_KEY] = false
-  globalThis[PENDING_KEY]?.clear()
-  globalThis[REVISION_KEY] = writesRevision() + 1
+export function resetWrites(scope) {
+  const current = state(scope)
+  current.files.clear()
+  current.uncertain = false
+  current.pending.clear()
+  current.revision++
+}
+
+// Only use when the scope has no remaining users, such as a finished evaluation.
+export function releaseWrites(scope) {
+  requireScope(scope)
+  globalThis[STATE_KEY]?.delete(scope)
 }

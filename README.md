@@ -51,4 +51,6 @@ The run was **incomplete**: 45 requests timed out across the direct and guard te
 
 These are ideas, not current features: support for OpenCode v2, plus a simpler setup and calibration path that stays conservative by default. The current release supports v1 only.
 
-MIT. See [LICENSE](LICENSE).
+## License
+
+Open source under the [MIT License](LICENSE). Copyright (c) humanfacetech.

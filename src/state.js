@@ -17,6 +17,7 @@
  */
 
 import { getWrite, referencedWrites } from "./written.js"
+import { requireScope } from "./scope.js"
 
 const URL_PATTERN = /\b(?:https?|ftps?|sftp|scp|rsync|ssh|git):\/\/[^\s"'`<>|;&]+/gi
 
@@ -313,7 +314,8 @@ export function writtenContent(tool, args) {
  * A shell command is judged when it uses a network primitive, runs a file
  * the agent has written, or mentions a written file at all.
  */
-export function hasOutboundSurface(tool, args, directory) {
+export function hasOutboundSurface(tool, args, directory, scope) {
+  requireScope(scope)
   if (LOCAL_ONLY_TOOLS.has(tool)) {
     // A file write can stage a payload that a later call executes, so the
     // content decides.
@@ -330,7 +332,7 @@ export function hasOutboundSurface(tool, args, directory) {
     if (runsLocalScript(command)) return true
     // The command mentions a file the agent wrote earlier. It may now hold
     // a payload, so it is judged.
-    if (referencedWrites(command, directory).length) return true
+    if (referencedWrites(command, directory, scope).length) return true
     return false
   }
 
@@ -357,11 +359,12 @@ export function hasOutboundSurface(tool, args, directory) {
  * cannot tell a staging step from a harmless script unless it is shown what
  * the file contains — and the guard already recorded that.
  */
-export function stagedContents(text, maxChars, directory, staged) {
+export function stagedContents(text, maxChars, directory, staged, scope) {
+  requireScope(scope)
   if (typeof text !== "string" || !text) return []
   const entries = []
-  for (const hit of referencedWrites(text, directory)) {
-    const written = staged?.get(hit.path) ?? getWrite(hit.path)
+  for (const hit of referencedWrites(text, directory, scope)) {
+    const written = staged?.get(hit.path) ?? getWrite(hit.path, undefined, scope)
     if (!written) continue
     entries.push({
       path: written.path,
@@ -379,15 +382,16 @@ export function stagedContents(text, maxChars, directory, staged) {
  * a destination, a file reference or a sink.
  */
 export function renderState(input) {
+  requireScope(input.scope)
   const hosts = new Set(extractHosts(input.tool, input.args))
   const paths = extractPaths(input.tool, input.args)
   const text = fullText(input.tool, input.args)
   const references = new Set(extractFileReferences(text))
   const argumentsText = renderArgs(input.args, input.maxArgChars)
-  const staged = stagedContents(text, input.maxArgChars, input.directory, input.staged)
+  const staged = stagedContents(text, input.maxArgChars, input.directory, input.staged, input.scope)
   let transfer = hasTransferPrimitive(text)
-  for (const hit of referencedWrites(text, input.directory)) {
-    const content = (input.staged?.get(hit.path) ?? getWrite(hit.path))?.content ?? ""
+  for (const hit of referencedWrites(text, input.directory, input.scope)) {
+    const content = (input.staged?.get(hit.path) ?? getWrite(hit.path, undefined, input.scope))?.content ?? ""
     for (const host of extractHosts("write", { content })) hosts.add(host)
     for (const reference of extractFileReferences(content)) references.add(reference)
     transfer ||= hasTransferPrimitive(content)

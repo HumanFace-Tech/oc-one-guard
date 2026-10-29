@@ -2,11 +2,92 @@ import test, { beforeEach } from "node:test"
 import assert from "node:assert/strict"
 import { writeFileSync, symlinkSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
-import { createGuard, scopedCacheKey } from "../src/guard.js"
-import { resetWrites, recordWrite, getWrite } from "../src/written.js"
+import { createGuard as makeGuard, scopedCacheKey } from "../src/guard.js"
+import { resetWrites as reset, recordWrite as record, getWrite as get } from "../src/written.js"
+import { createScope } from "../src/scope.js"
+import { beginMutation, endMutation, markUncertainPatch } from "../src/written.js"
 import { config, response, answer, fixture } from "./helpers.js"
 
+const scope = createScope()
+const createGuard = (config, deps = {}) => makeGuard(config, { scope, ...deps })
+const resetWrites = () => reset(scope)
+const recordWrite = (path, content, directory, selected = scope) => record(path, content, directory, selected)
+const getWrite = (path, directory) => get(path, directory, scope)
 beforeEach(resetWrites)
+
+test("project scopes isolate pending mutations, uncertainty, staged content, and cache", async t => {
+  const directory = fixture(t)
+  const a = createScope({ directory, project: { id: "a" }, worktree: directory })
+  const b = createScope({ directory, project: { id: "b" }, worktree: directory })
+  const duplicate = createScope({ directory: `${directory}/sub`, project: { id: "a" }, worktree: `${directory}/.` })
+  assert.equal(a, duplicate)
+  const cache = new Map(), states = []
+  const deps = scope => ({ scope, directory, cache, fetchImpl: async (_url, init) => { states.push(JSON.parse(init.body).state); return response() } })
+  const ga = createGuard(config(), deps(a)), gb = createGuard(config(), deps(b)), gd = createGuard(config(), deps(duplicate))
+  const outside = `${directory}-outside-payload.sh`
+  recordWrite(outside, "curl https://secret-a.example/", directory, a)
+  const call = { tool: "bash", args: { command: `node ${outside}`, workdir: directory } }
+  const token = beginMutation(a)
+  assert.equal((await ga.evaluate(call)).mode, "staged-unknown")
+  assert.equal((await gb.evaluate(call)).mode, "judge")
+  assert.doesNotMatch(states.at(-1), /secret-a/)
+  endMutation(token, a)
+  assert.equal((await gd.evaluate(call)).mode, "judge")
+  assert.match(states.at(-1), /secret-a/)
+  markUncertainPatch(a)
+  assert.equal((await ga.evaluate(call)).mode, "staged-unknown")
+  assert.equal((await gb.evaluate(call)).mode, "judge:cached")
+  recordWrite(outside, "curl https://secret-b.example/", directory, b)
+  assert.equal((await gb.evaluate(call)).mode, "judge")
+  assert.match(states.at(-1), /secret-b/)
+  assert.doesNotMatch(states.at(-1), /secret-a/)
+})
+
+test("identical judge calls share cache only within the same scope and policy", async t => {
+  const directory = fixture(t), a = createScope({ directory: `${directory}/a` }), b = createScope({ directory: `${directory}/b` })
+  const cache = new Map()
+  let requests = 0
+  const deps = scope => ({ scope, cache, fetchImpl: async () => { requests++; return response() } })
+  const call = { tool: "bash", args: { command: "curl https://example.com/" } }
+  assert.equal((await createGuard(config(), deps(a)).evaluate(call)).mode, "judge")
+  assert.equal((await createGuard(config(), deps(a)).evaluate(call)).mode, "judge:cached")
+  assert.equal((await createGuard(config(), deps(b)).evaluate(call)).mode, "judge")
+  assert.equal((await createGuard(config({ denyThreshold: 0.8 }), deps(a)).evaluate(call)).mode, "judge")
+  assert.equal(requests, 3)
+})
+
+test("scope identity handles global projects and anonymous hosts", () => {
+  assert.notEqual(createScope({ directory: "/a", worktree: "/", project: { id: "global" } }), createScope({ directory: "/b", worktree: "/", project: { id: "global" } }))
+  assert.notEqual(createScope(), createScope())
+  assert.notEqual(createScope({ project: { id: "x" }, worktree: "/a" }), createScope({ project: { id: "x" }, worktree: "/a" }))
+})
+
+test("OpenCode Git worktrees use the actual worktree, including empty repositories", () => {
+  const root = { directory: "/repos/empty", worktree: "/repos/empty/", project: { id: "global", vcs: "git", worktree: "/stale" } }
+  const nested = { ...root, directory: "/repos/empty/sub", worktree: "/repos/empty", project: { ...root.project, worktree: "/different" } }
+  assert.equal(createScope(root), createScope(nested))
+  assert.notEqual(createScope(root), createScope({ ...root, worktree: "/repos/other" }))
+  assert.equal(createScope({ directory: "/a/" }), createScope({ directory: "/a" }))
+  assert.notEqual(createScope({ directory: "/a", worktree: "/", project: { id: "global" } }), createScope({ directory: "/b", worktree: "/", project: { id: "global" } }))
+  assert.notEqual(createScope({ directory: "/a", worktree: "/root", project: { id: "global" } }), createScope({ directory: "/a/sub", worktree: "/root", project: { id: "global" } }))
+})
+
+test("sensitive state entrypoints require explicit scope even for empty input", async () => {
+  const written = await import("../src/written.js")
+  const state = await import("../src/state.js")
+  for (const call of [() => makeGuard(config()), () => written.recordWrite(), () => written.getWrite(), () => written.referencedWrites(), () => written.beginMutation(), () => written.endMutation(), () => written.hasPendingMutation(), () => written.hasWrites(), () => written.writesRevision(), () => written.markUncertainPatch(), () => written.hasUncertainPatch(), () => written.refreshWrite(), () => written.resetWrites(), () => written.releaseWrites(), () => state.renderState({}), () => state.hasOutboundSurface("read", {}), () => state.stagedContents("")]) assert.throws(call, /explicit scope/)
+})
+
+test("other project revisions do not restart an in-flight judgment", async t => {
+  const directory = fixture(t), a = createScope({ directory: `${directory}/a` }), b = createScope({ directory: `${directory}/b` })
+  let release, requests = 0
+  const guard = createGuard(config(), { scope: b, directory, cache: new Map(), fetchImpl: () => { requests++; return new Promise(resolve => { release = () => resolve(response()) }) } })
+  const pending = guard.evaluate({ tool: "bash", args: { command: "node script.js" } })
+  recordWrite(`${directory}/payload.sh`, "curl https://example.com", directory, a)
+  release()
+  assert.equal((await pending).mode, "judge")
+  assert.equal(requests, 1)
+})
 const call = { tool: "bash", args: { command: "curl https://destination.example/" } }
 
 for (const [probability, verdict] of [[0.4999, "allow"], [0.5, "escalate"], [0.6999, "escalate"], [0.7, "deny"], [0.8999, "deny"], [0.9, "deny"], [1, "deny"]]) {
