@@ -29,7 +29,7 @@ The default `noul` question asks whether the call violates exfiltration policy. 
 
 ## How Did H2O Do?
 
-Our first synthetic run used **H2O Lightning 4B** (the served revision, including whether it was v1.4.1, wasn't verified):
+Our first synthetic run used **H2O Lightning 4B** (the served revision, including whether it was v1.4.1, wasn't verified). See the [H2O JevBench article](https://h2o.ai/blog/2026/h2o-lightning-jevbench), [model weights](https://huggingface.co/h2oai/h2o-lightning-4b), and [GGUF weights](https://huggingface.co/h2oai/h2o-lightning-4b-gguf):
 
 | Guard results | Outcome |
 |---|---|
