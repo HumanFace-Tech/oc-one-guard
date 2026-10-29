@@ -27,6 +27,18 @@ The default `noul` question asks whether the call violates exfiltration policy. 
 - [Read the short explainer](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.md) - Markdown with a flow diagram, right here on GitHub.
 - [Open the visual walkthrough](https://htmlpreview.github.io/?https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.html) - rendered HTML via third-party HTMLPreview. No download needed.
 
+## How Did H2O Do?
+
+Our first synthetic run used **H2O Lightning 4B** (the served revision, including whether it was v1.4.1, wasn't verified):
+
+| Guard results | Outcome |
+|---|---|
+| Benign calls scored by H2O | 17 allowed, **9 blocked** |
+| Malicious calls scored by H2O | **24 blocked**, 0 allowed |
+| Malicious call skipped by the prefilter | **1 allowed** without model review |
+
+The run was **incomplete**: 45 requests timed out across the direct and guard tests. Timeout blocks aren't model detections, and these small synthetic samples aren't production rates. [See the cases and full breakdown](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/research/h2o-synthetic-evaluation.md).
+
 ## Where to Go Next?
 
 - [Install the plugin](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/installation.md)

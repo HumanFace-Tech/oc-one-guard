@@ -8,6 +8,7 @@ Start with the GitHub-native [Markdown explainer](explainer.md) for the short ve
 - [Contributing](contributing.md) - development checks and review expectations.
 - [Architecture decisions](adr/README.md) - accepted decisions and their tradeoffs.
 - [Decision-model formats research](research/decision-model-formats-report.md) - dated research on `noul`, `choice`, and `score`; its policy recommendation is superseded by ADR 0007.
+- [H2O Lightning synthetic evaluation](research/h2o-synthetic-evaluation.md) - one synthetic 100-case run, with its limits and benign blocks.
 - [Release checklist](release-checklist.md) - small, explicit follow-ups for testing, npm distribution, and compatibility.
 
 The [root README](../README.md) is the quick introduction. Runtime behavior and tests remain the source of truth.

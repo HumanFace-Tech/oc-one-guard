@@ -11,12 +11,15 @@
   "files": [
     "index.js",
     "src/",
+    "eval/runner.js",
+    "eval/cases.json",
     "config.example.json",
     "README.md",
     "docs/assets/risk-policy.svg"
   ],
   "scripts": {
-    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/plugin.test.js test/security.test.js test/stop.test.js"
+    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/plugin.test.js test/security.test.js test/stop.test.js test/eval.test.js",
+    "eval:live": "node eval/runner.js"
   },
   "engines": {
     "node": ">=18.17.0"
