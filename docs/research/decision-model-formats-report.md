@@ -2,7 +2,9 @@
 
 **Research date: 2026-10-28**
 
-This report assesses whether the plugin should move from its current `choice` decision question to another decision format, and what evidence would be needed before changing that policy. It separates facts confirmed in this repository, claims made by publishers, analytical inferences, proposals, and topics not evaluated. It does not change runtime behavior or define new configuration fields.
+> **Historical snapshot, 2026-10-28. Superseded for current policy.** This report records the repository state and recommendation on its research date. Since then, the accepted policy in [ADR 0007](../adr/0007-risk-bands-and-run-cancellation.md) changed the default question to `noul` and set the default cutoffs to 0.50, 0.70, and 0.90. The historical observations and research evidence below are not retroactive experiments or a current configuration reference. Use [configuration](../configuration.md) for current behavior.
+
+This report assesses whether the plugin should move from its then-current `choice` decision question to another decision format, and what evidence would be needed before changing that policy. It separates facts confirmed in the repository snapshot, claims made by publishers, analytical inferences, proposals, and topics not evaluated. It does not change runtime behavior or define configuration fields.
 
 ## Executive summary
 
@@ -26,7 +28,7 @@ Use these labels when reading the claims below:
 - **Proposal** means work an implementation team could choose to do later.
 - **Not evaluated** means this research did not collect evidence sufficient to answer the question.
 
-## Existing choice and plugin contract
+## Choice policy in the 2026-10-28 snapshot
 
 ### The historical decision is not a comparative result
 
@@ -36,7 +38,7 @@ The repository contains no reproducible, controlled live comparison of the three
 
 ### What the code asks and consumes
 
-**Confirmed local fact.** `src/defaults.js` sets the default endpoint to `/v1/systemone`, model id `h1-decision-4b`, `denyThreshold` to `0.75`, `escalateThreshold` to `0.45`, and a first `choice` question named `verdict`. Its criteria are `allow`, `deny`, and `escalate`; `denyLabel` is `deny`.
+**Confirmed local fact at the time of research.** The 2026-10-28 source snapshot set the default endpoint to `/v1/systemone`, model id `h1-decision-4b`, `denyThreshold` to `0.75`, `escalateThreshold` to `0.45`, and a first `choice` question named `verdict`. Its criteria were `allow`, `deny`, and `escalate`; `denyLabel` was `deny`. These are historical values, not current defaults.
 
 `src/judge.js` builds a JSON body containing `model`, `state`, and named `questions`, then POSTs it to the configured endpoint. `src/guard.js` evaluates only `config.questions[0]`. It gets the policy probability through `denyProbability()`, then compares that number with the deny and escalation thresholds. The `choice` top label and returned `confidence` are not used to choose the policy outcome. Therefore, the first `choice` answer's `P(deny)` controls both thresholds; `P(escalate)` is not separately interpreted. An escalation result comes from the deny-probability band and is then acted on via `escalateAction`.
 
@@ -138,7 +140,7 @@ The Index's calibration panels are particular dataset and binning procedures. H2
 
 ### Recommendation
 
-**Proposal.** Keep the current default `choice` question and policy thresholds until a local comparison demonstrates a better option for the guard's intended risk profile. Do not silently switch formats, automatically select whichever format appears best in a public leaderboard, or treat the first response type supported by a server as equivalent.
+**Historical proposal.** At the time of research, keep the then-current default `choice` question and policy thresholds until a local comparison demonstrated a better option for the guard's intended risk profile. This proposal was superseded by ADR 0007. The later policy change does not constitute a comparative trial or calibration evidence. Do not treat this report as evidence that `noul` outperforms `choice`.
 
 If evaluation supports adding options, make the choice explicit through documented backend profiles. A profile should pin the model artifact/version and quantization, server and endpoint contract, response format, task prompt, threshold, and any conversion from the model output to violation probability. These are design fields for a future proposal, not valid settings in the current configuration.
 

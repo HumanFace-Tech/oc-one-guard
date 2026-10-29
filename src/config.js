@@ -117,6 +117,10 @@ export function normalizeConfig(raw) {
   if (Number.isFinite(threshold) && Number.isFinite(escalate) && escalate > threshold) {
     errors.push("escalateThreshold must not be greater than denyThreshold")
   }
+  const stop = merged.stopThreshold
+  if (stop !== null && (typeof stop !== "number" || !Number.isFinite(stop) || stop < threshold || stop > 1)) {
+    errors.push("stopThreshold must be null or a finite number between denyThreshold and 1")
+  }
 
   // These three decide whether a failure allows or blocks. An unrecognised
   // value must never be read as "allow", so only the exact literals are

@@ -30,8 +30,11 @@ In-flight write, edit, and patch calls remain pending until a matching completio
 
 ## Default policy expectations
 
+- The default `noul` question treats `true` as an exfiltration-policy violation. Its signal is a policy cutoff, not a calibrated probability.
+- A signal from `0.50` to below `0.70` blocks for manual review; this hook cannot open a native approval prompt or ask the user directly.
+- A signal at or above `0.90` also requests best-effort cancellation of the calling conversation run and verified ancestors. It does not close or delete the conversation, and it cannot guarantee that an in-flight tool or child process stops. Set `stopThreshold` to `null` to disable this request.
 - Judge request failures and unusable verdicts block by default.
-- Escalations block by default.
+- The configured escalation band blocks by default; `escalateAction: "allow"` can override that decision without prompting the user.
 - Invalid configuration is logged and falls back to validated defaults.
 - Host checks and filesystem tracking have bounded, heuristic coverage.
 

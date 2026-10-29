@@ -43,6 +43,16 @@ test("threshold ordering and conflicting tool policy are rejected", () => {
   assert.equal(normalizeConfig({ denyThreshold: "0.8" }).denyThreshold, 0.8)
 })
 
+test("stop threshold is numeric, ordered, finite, or explicitly disabled", () => {
+  for (const stopThreshold of [false, true, "0.9", NaN, Infinity, -1, 0.69, 1.1]) {
+    assert.throws(() => normalizeConfig({ stopThreshold }), /stopThreshold/)
+  }
+  assert.throws(() => normalizeConfig({ denyThreshold: 0.95 }), /stopThreshold/)
+  for (const stopThreshold of [null, 0.7, 0.9, 1]) {
+    assert.equal(normalizeConfig({ stopThreshold }).stopThreshold, stopThreshold)
+  }
+})
+
 for (const field of ["failMode", "unknownMode", "escalateAction"]) {
   test(`${field} accepts only explicit actions`, () => {
     for (const value of [false, null, "ALLOW", "", "typo"]) {
@@ -53,13 +63,13 @@ for (const field of ["failMode", "unknownMode", "escalateAction"]) {
 }
 
 test("question merge replaces criteria and custom question replaces first default", () => {
-  const q = { name: "verdict", criteria: { safe: "safe", unsafe: "unsafe" }, denyLabel: "unsafe" }
+  const q = { name: "verdict", type: "choice", criteria: { safe: "safe", unsafe: "unsafe" }, denyLabel: "unsafe" }
   const merged = normalizeConfig({ questions: [q] })
   assert.deepEqual(merged.questions[0].criteria, q.criteria)
   assert.equal(merged.questions[0].type, "choice")
   const custom = { ...q, name: "custom", type: "choice", instructions: "Decide" }
   assert.deepEqual(normalizeConfig({ questions: [custom] }).questions, [custom])
-  assert.ok(Object.hasOwn(DEFAULTS.questions[0].criteria, "deny"))
+  assert.ok(Object.hasOwn(DEFAULTS.questions[0].criteria, "true"))
   assert.deepEqual(mergeConfig({ skipTools: ["read"] }, { skipTools: ["glob"] }).skipTools, ["glob"])
 })
 

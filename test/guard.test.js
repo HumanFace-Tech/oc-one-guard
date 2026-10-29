@@ -9,13 +9,14 @@ import { config, response, answer, fixture } from "./helpers.js"
 beforeEach(resetWrites)
 const call = { tool: "bash", args: { command: "curl https://destination.example/" } }
 
-for (const [probability, verdict] of [[0, "allow"], [0.449, "allow"], [0.45, "escalate"], [0.749, "escalate"], [0.75, "deny"], [1, "deny"]]) {
+for (const [probability, verdict] of [[0.4999, "allow"], [0.5, "escalate"], [0.6999, "escalate"], [0.7, "deny"], [0.8999, "deny"], [0.9, "deny"], [1, "deny"]]) {
   test(`threshold ${probability} yields ${verdict}`, async () => {
     const audits = []
     const guard = createGuard(config(), { cache: new Map(), fetchImpl: async () => response(answer(probability)), writeAudit: d => audits.push(d) })
     const decision = await guard.evaluate(call)
     assert.equal(decision.verdict, verdict)
     assert.equal(decision.blocked, verdict !== "allow")
+    assert.equal(decision.stop, probability >= 0.9)
     assert.equal(audits.length, 1)
   })
 }
@@ -27,6 +28,47 @@ test("prefilter allows local reads but reviews unknown tools and transfer-bearin
   assert.equal((await guard.evaluate({ tool: "future_mcp_tool", args: {} })).mode, "judge")
   assert.equal((await guard.evaluate({ tool: "edit", args: { filePath: "/staged-test.sh", newString: call.args.command } })).mode, "judge")
   assert.equal(requests, 2)
+})
+
+test("escalation and emergency results coalesce but are never retained in TTL cache", async () => {
+  for (const probability of [0.5, 0.9]) {
+    let release
+    let requests = 0
+    const guard = createGuard(config(), { cache: new Map(), fetchImpl: () => {
+      requests++
+      return new Promise(resolve => { release = () => resolve(response(answer(probability))) })
+    } })
+    const a = guard.evaluate(call)
+    const b = guard.evaluate(call)
+    release()
+    assert.equal((await a).stop, probability >= 0.9)
+    assert.equal((await b).mode, "judge:coalesced")
+    const c = guard.evaluate(call)
+    assert.equal(requests, 2)
+    release()
+    await c
+  }
+})
+
+test("choice cutoffs and inverted noul remain configurable; stop can be disabled", async () => {
+  const questions = [{ name: "verdict", type: "choice", denyLabel: "deny", criteria: { allow: "safe", deny: "violation" } }]
+  const choice = createGuard(config({ questions, escalateThreshold: 0.45, denyThreshold: 0.75, stopThreshold: null }), {
+    cache: new Map(), fetchImpl: async () => response({ answers: { verdict: { type: "choice", probabilities: { deny: 0.72 } } } }),
+  })
+  assert.equal((await choice.evaluate(call)).verdict, "escalate")
+  const noul = createGuard(config({ stopThreshold: null, questions: [{ name: "verdict", denyLabel: "false" }] }), {
+    cache: new Map(), fetchImpl: async () => response(answer(0.01)),
+  })
+  const decision = await noul.evaluate(call)
+  assert.equal(decision.verdict, "deny")
+  assert.equal(decision.stop, false)
+})
+
+test("custom emergency cutoff applies inclusively", async () => {
+  for (const probability of [0.94, 0.95]) {
+    const guard = createGuard(config({ stopThreshold: 0.95 }), { cache: new Map(), fetchImpl: async () => response(answer(probability)) })
+    assert.equal((await guard.evaluate(call)).stop, probability >= 0.95)
+  }
 })
 
 test("tool overrides are applied without judge requests", async () => {
@@ -60,6 +102,7 @@ test("failures and unclassified answers follow explicit policy and are never cac
         const result = await guard.evaluate(call)
         assert.equal(result.blocked, action === "block")
         assert.equal(result.mode, `${unknown ? "unknown" : "fail"}-${action}`)
+        assert.equal(result.stop, false)
         assert.doesNotMatch(result.reason, /synthetic-secret/)
       }
       assert.equal(requests, 2)
@@ -124,7 +167,7 @@ test("state limit blocks rather than dropping security facts", async () => {
 test("non-finite JSON number from judge is unclassifiable and fails closed", async () => {
   const guard = createGuard(config(), { cache: new Map(), fetchImpl: async () => ({
     ok: true,
-    text: async () => '{"answers":{"verdict":{"type":"choice","probabilities":{"deny":1e999}}}}',
+    text: async () => '{"answers":{"verdict":{"type":"noul","noul":1e999}}}',
   }) })
   const decision = await guard.evaluate(call)
   assert.equal(decision.mode, "unknown-block")

@@ -12,4 +12,4 @@ Default `failMode`, `unknownMode`, and `escalateAction` to `"block"`. Invalid co
 
 ## Consequences
 
-Calls that need judge review can stop when the judge is offline or its response cannot be classified. Users can configure allow behavior, and prefilters or tool rules can bypass the judge by design; these defaults are not an unconditional fail-closed guarantee.
+Calls that need judge review can stop when the judge is offline or its response cannot be classified. Users can configure allow behavior, and prefilters or tool rules can bypass the judge by design; these defaults are not an unconditional fail-closed guarantee. This decision covers judge failures and unclear verdicts, not high-confidence run cancellation. Current risk bands and cancellation behavior are defined by [ADR 0007](0007-risk-bands-and-run-cancellation.md).

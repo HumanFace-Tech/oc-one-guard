@@ -523,9 +523,11 @@
         <li>tested on <b>1.19.4</b></li>
         <li>judge <b>/v1/systemone</b></li>
         <li>timeout <b>20s</b></li>
-        <li>escalate <b>&ge; 0.45</b></li>
-        <li>deny <b>&ge; 0.75</b></li>
+        <li>manual review block <b>&ge; 0.50</b></li>
+        <li>deny <b>&ge; 0.70</b></li>
+        <li>request run cancellation <b>&ge; 0.90</b></li>
         <li>fail mode <b>block</b></li>
+        <li>default question <b>noul</b></li>
       </ul>
 
       <p class="note">
@@ -618,8 +620,16 @@
               <span class="step-title">A verdict</span>
             </div>
             <p>
-              The judge returns a probability for the deny label. Below 0.45 allows, 0.45 up to
-              0.75 escalates, 0.75 and up denies.
+              The default <code>noul</code> question asks whether exfiltration policy is violated,
+              with <code>true</code> meaning violation. Below 0.50 allows,
+              0.50 up to 0.70 blocks for manual review, and 0.70 and up denies. At 0.90 and up,
+              the plugin also requests best-effort cancellation of the current conversation run and
+              verified ancestors, retaining the conversation. Set <code>stopThreshold: null</code> to
+              disable cancellation. The middle band blocks for manual review; this hook cannot create
+              a native approval prompt or ask the user directly. Question and threshold configuration
+              can change policy. A <code>score</code> question cannot drive the decision.
+              These signals are not calibrated probabilities. The session abort API is not atomic
+              per run; a new message can race an abort already dispatched.
             </p>
             <p>
               A failed request, a timeout, an unparseable answer, or an answer that cannot be
@@ -652,13 +662,13 @@
           <span class="verdict">Escalate</span>
           <h3>Unclear, and blocked by default</h3>
           <p>
-            The judge found the destination or the sensitivity genuinely unclear.
-            <code>escalateAction</code> defaults to <code>block</code>, so the call is stopped and
-            the agent is told to rephrase it or ask you to run it.
+            The violation signal is in the configured escalation band.
+            <code>escalateAction</code> defaults to <code>block</code>, so the call is stopped for
+            manual review. This hook cannot prompt you or ask you directly.
           </p>
           <p>
             Set <code>escalateAction</code> to <code>allow</code> and the call goes through with a
-            warning toast and an audit entry instead.
+            warning toast and an audit entry instead. This is a policy override, not an approval prompt.
           </p>
         </div>
 
@@ -797,8 +807,8 @@ bash /tmp/staged.sh</code></pre>
             confused agent.
           </p>
           <p>
-            It happens. The recovery path is deliberate: rephrase the call so the intent is
-            explicit, or ask the user to run it by hand.
+            It happens. Rephrase the call so its intent is explicit, or stop and ask the user outside
+            this hook. The plugin does not implement a user approval flow.
           </p>
         </div>
 

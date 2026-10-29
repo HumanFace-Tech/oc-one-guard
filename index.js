@@ -18,6 +18,7 @@ import { createGuard, VERDICT } from "./src/guard.js"
 import { scanBlockedHosts } from "./src/blocked-hosts.js"
 import { redactText } from "./src/redact.js"
 import { beginMutation, endMutation } from "./src/written.js"
+import { createStopController } from "./src/stop.js"
 
 export const id = "oc-one-guard"
 
@@ -44,6 +45,9 @@ function blockedMessage(decision, tool, args, redact) {
   }
   if (preview) {
     lines.push(`Command: ${preview}`)
+  }
+  if (decision.verdict === VERDICT.ESCALATE) {
+    lines.push("Manual review required. No native approval prompt is available from this hook.")
   }
   lines.push(
     "This call was stopped before execution. If it is legitimate, rephrase it so the intent is explicit, or ask the user to run it manually.",
@@ -89,6 +93,17 @@ export async function server(input, options) {
       // Logging must never break the guard.
     }
   }
+  const stopNotice = (message, variant) => {
+    try {
+      input.client.tui?.showToast?.({ body: { title: "oc-one-guard", message, variant, duration: 8000 } })?.catch?.(() => {})
+    } catch {}
+  }
+  const stop = createStopController({
+    client: input.client,
+    directory: input.directory,
+    warn: message => { report("warn", message); if (config.notify) stopNotice(message, "warning") },
+    notify: message => { report("warn", message); if (config.notify) stopNotice(message, "warning") },
+  })
 
   for (const problem of config.problems ?? []) {
     report("error", `Configuration problem, using fail-closed defaults: ${problem}`)
@@ -107,9 +122,16 @@ export async function server(input, options) {
   }
 
   return {
+    async "chat.message"(hookInput, output) {
+      stop.observe(hookInput, output)
+    },
     async "tool.execute.before"(hookInput, output) {
+      const ticket = stop.capture(hookInput.sessionID)
       const tool = hookInput.tool
       const args = output.args
+      if (await stop.pending(hookInput.sessionID)) {
+        throw new Error("[oc-one-guard] Blocked tool call while conversation cancellation is pending.")
+      }
 
       const scan = config.blockedHosts.length ? scanBlockedHosts(args, config.blockedHosts) : {}
       if (scan.host || scan.limited) {
@@ -143,6 +165,15 @@ export async function server(input, options) {
         throw error
       }
 
+      if (decision.stop) {
+        remove(key, token)
+        await stop.request(ticket)
+        throw new Error(blockedMessage(decision, tool, args, config.redactArguments))
+      }
+      if (await stop.pending(hookInput.sessionID)) {
+        remove(key, token)
+        throw new Error("[oc-one-guard] Blocked tool call while conversation cancellation is pending.")
+      }
       if (decision.verdict === VERDICT.ESCALATE && config.escalateAction === "allow") {
         // Escalated but allowed: warn loudly so the attempt is visible.
         audit(decision, { state: decision.state })

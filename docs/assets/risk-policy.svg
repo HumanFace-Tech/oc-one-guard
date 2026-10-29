@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="555" viewBox="0 0 720 416" role="img" aria-labelledby="risk-title risk-desc">
+  <title id="risk-title">Configurable default risk bands</title>
+  <desc id="risk-desc">Static policy scale, not elapsed time or measured progress. The default judge violation signal ranges from 0 to 1 and is not a calibrated probability. Below 0.50 allows the tool call. From 0.50 to below 0.70 blocks for manual review without an approval popup. From 0.70 to below 0.90 denies the call. From 0.90 through 1 denies the call and requests best-effort cancellation of the current run, retaining the conversation. Thresholds are configurable.</desc>
+  <defs>
+    <linearGradient id="allow" x2="0" y2="1">
+      <stop stop-color="#7bd0a1"/>
+      <stop offset="1" stop-color="#369c68"/>
+    </linearGradient>
+    <linearGradient id="review" x2="0" y2="1">
+      <stop stop-color="#f4ce86"/>
+      <stop offset="1" stop-color="#d79c37"/>
+    </linearGradient>
+    <linearGradient id="deny" x2="0" y2="1">
+      <stop stop-color="#f0938c"/>
+      <stop offset="1" stop-color="#dc615b"/>
+    </linearGradient>
+    <linearGradient id="stop" x2="0" y2="1">
+      <stop stop-color="#cb3654"/>
+      <stop offset="1" stop-color="#951d39"/>
+    </linearGradient>
+    <clipPath id="meter"><rect x="32" y="112" width="656" height="48" rx="10"/></clipPath>
+  </defs>
+  <rect x="1" y="1" width="718" height="414" rx="20" fill="#121416" stroke="#3d444a" stroke-width="2"/>
+  <g font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="32" y="48" fill="#e9e9e7" font-size="28" font-weight="700">Risk bands</text>
+    <rect x="424" y="23" width="264" height="34" rx="17" fill="#16302e" stroke="#376560"/>
+    <text x="556" y="46" text-anchor="middle" fill="#9cddd5" font-size="20" font-weight="600">Configurable defaults</text>
+    <text x="32" y="83" fill="#b3b8bc" font-size="22">Judge violation signal</text>
+    <g clip-path="url(#meter)">
+      <rect x="32" y="112" width="328" height="48" fill="url(#allow)"/>
+      <rect x="360" y="112" width="131.2" height="48" fill="url(#review)"/>
+      <rect x="491.2" y="112" width="131.2" height="48" fill="url(#deny)"/>
+      <rect x="622.4" y="112" width="65.6" height="48" fill="url(#stop)"/>
+      <path d="M360 112v48m131.2-48v48m131.2-48v48" stroke="#121416" stroke-width="3"/>
+      <path d="M32 114h656" stroke="#ffffff" stroke-opacity=".22" stroke-width="2"/>
+    </g>
+    <path d="M32 168v8m328-8v8m131.2-8v8m131.2-8v8m65.6-8v8" stroke="#949ba1" stroke-width="2"/>
+    <g fill="#e9e9e7" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="22">
+      <text x="32" y="202">0</text>
+      <text x="360" y="202" text-anchor="middle">.50</text>
+      <text x="491.2" y="202" text-anchor="middle">.70</text>
+      <text x="622.4" y="202" text-anchor="middle">.90</text>
+      <text x="688" y="202" text-anchor="end">1</text>
+    </g>
+    <path d="M32 224h656" stroke="#2b3034"/>
+    <g font-size="24" font-weight="650">
+      <circle cx="40" cy="253" r="7" fill="#7bd0a1"/>
+      <text x="58" y="262" fill="#7bd0a1">Allow</text>
+      <circle cx="384" cy="253" r="7" fill="#e2b768"/>
+      <text x="402" y="262" fill="#e2b768">Manual review</text>
+      <circle cx="40" cy="341" r="7" fill="#f0938c"/>
+      <text x="58" y="350" fill="#f0938c">Deny</text>
+      <circle cx="384" cy="341" r="7" fill="#f16b88"/>
+      <text x="402" y="350" fill="#f16b88">Deny + stop run</text>
+    </g>
+    <g fill="#b3b8bc" font-size="20">
+      <text x="58" y="290">Below .50 · execute call</text>
+      <text x="402" y="290">.50 to &lt; .70 · BLOCK</text>
+      <text x="402" y="314">No approval popup</text>
+      <text x="58" y="378">.70 to &lt; .90 · BLOCK</text>
+      <text x="402" y="378">.90 to 1 · best effort</text>
+    </g>
+  </g>
+</svg>

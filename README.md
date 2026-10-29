@@ -12,6 +12,10 @@ An OpenCode plugin that checks proposed tool calls for possible data exfiltratio
 
 ⚠️ **Judge offline? Reviewed calls block by default.** Unclear answers and escalations block too. Keep the [disable instructions](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/installation.md#disable-it-if-the-judge-is-offline) handy.
 
+![Configurable default risk bands for the judge violation signal, from 0 to 1: below 0.50 allows the tool call; 0.50 to below 0.70 blocks for manual review without an approval popup; 0.70 to below 0.90 denies the call; 0.90 through 1 denies the call and requests best-effort cancellation of the current run, retaining the conversation. This is a static policy scale, not elapsed time or measured progress.](docs/assets/risk-policy.svg)
+
+The default `noul` question asks whether the call violates exfiltration policy. These are configurable cutoffs, not calibrated probabilities. Stopping a run is best-effort and keeps the conversation for follow-up; `stopThreshold: null` disables cancellation. See [configuration](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/configuration.md) for overrides and cancellation limits.
+
 ## Quick Heads-Up
 
 - OpenCode v1 only. Version 1.19.4 is tested; v2 is not supported.

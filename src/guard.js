@@ -173,7 +173,7 @@ function stringifySafely(value, seen) {
 }
 
 export class GuardDecision {
-  constructor({ verdict, reason, probability, confidence, tool, hosts, durationMs, mode, state }) {
+  constructor({ verdict, reason, probability, confidence, tool, hosts, durationMs, mode, state, stop = false }) {
     this.verdict = verdict
     this.reason = reason
     this.probability = probability
@@ -183,6 +183,7 @@ export class GuardDecision {
     this.durationMs = durationMs
     this.mode = mode
     this.state = state
+    this.stop = stop
   }
 
   get blocked() {
@@ -389,7 +390,7 @@ export function createGuard(config, deps = {}) {
       if (config.cacheEnabled && cache.get(key)?.pending === pending) cache.delete(key)
       return evaluate(input)
     }
-    if (decision.mode === "judge") cacheSet(key, { ...decision })
+    if (decision.mode === "judge" && decision.verdict !== VERDICT.ESCALATE && !decision.stop) cacheSet(key, { ...decision })
     else if (config.cacheEnabled && cache.get(key)?.pending === pending) cache.delete(key)
     return decision
   }
@@ -465,6 +466,7 @@ export function createGuard(config, deps = {}) {
       durationMs: now() - started,
       mode: "judge",
       state,
+      stop: config.stopThreshold !== null && Number.isFinite(probability) && probability >= config.stopThreshold,
     })
 
     writeAudit(decision, { state })

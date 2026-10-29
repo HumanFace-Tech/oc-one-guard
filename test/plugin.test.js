@@ -14,7 +14,7 @@ test("package exports plugin identity and hook factory", async t => {
   assert.equal(id, "oc-one-guard")
   assert.deepEqual(plugin, { id, server })
   const hooks = await server({ client: {}, directory: fixture(t) }, config())
-  assert.deepEqual(Object.keys(hooks).sort(), ["event", "tool.execute.after", "tool.execute.before"])
+  assert.deepEqual(Object.keys(hooks).sort(), ["chat.message", "event", "tool.execute.after", "tool.execute.before"])
   await hooks["tool.execute.before"]({ tool: "read" }, { args: { filePath: "file.txt" } })
   assert.equal(calls.length, 0)
 })
@@ -137,4 +137,86 @@ test("uncorrelatable mutations stay pending", async t => {
   assert.equal(hasPendingMutation(), true)
   await assert.rejects(hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } }), /content is unknown/)
   assert.equal(calls.length, 0)
+})
+
+test("emergency blocks and cleans mutation before deferred root-first cancellation", async t => {
+  stubFetch(t, () => response(answer(0.9)))
+  const aborted = []
+  let release
+  const hooks = await server({ client: { session: {
+    get: async ({ path }) => ({ data: { id: path.id, parentID: path.id === "child" ? "root" : undefined } }),
+    abort: ({ path }) => {
+      aborted.push(path.id)
+      return new Promise(resolve => { if (path.id === "root") release = () => resolve({ data: true }); else resolve({ data: true }) })
+    },
+  } }, directory: fixture(t) }, config())
+  await hooks["chat.message"]({ sessionID: "root" }, { message: { id: "first" } })
+  await assert.rejects(hooks["tool.execute.before"]({ ...input, sessionID: "child" }, { args: { filePath: "payload.sh", content: "curl https://destination.example/" } }), /Blocked tool call/)
+  assert.equal(hasPendingMutation(), false)
+  assert.deepEqual(aborted, [])
+  await assert.rejects(hooks["tool.execute.before"]({ tool: "read", sessionID: "root" }, { args: {} }), /cancellation is pending/)
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.deepEqual(aborted, ["root", "child"])
+  release()
+  await new Promise(resolve => setTimeout(resolve, 10))
+  await hooks["chat.message"]({ sessionID: "root", messageID: "second" }, {})
+  await hooks["tool.execute.before"]({ tool: "read", sessionID: "root" }, { args: {} })
+})
+
+test("stale coalesced judge results block both calls without canceling a newer ancestor run", async t => {
+  let release
+  let entered
+  const started = new Promise(resolve => { entered = resolve })
+  const fetches = stubFetch(t, () => { entered(); return new Promise(resolve => { release = () => resolve(response(answer(0.95))) }) })
+  const aborted = []
+  const hooks = await server({ client: { session: {
+    get: async ({ path }) => ({ data: { id: path.id, parentID: path.id === "child" ? "root" : undefined } }),
+    abort: async ({ path }) => { aborted.push(path.id); return { data: true } },
+  } } }, config())
+  await hooks["chat.message"]({ sessionID: "root", messageID: "first" }, {})
+  const run = sessionID => hooks["tool.execute.before"]({ tool: "bash", sessionID }, { args: { command: "curl https://destination.example/" } })
+  const a = assert.rejects(run("child"), /Blocked tool call/)
+  const b = assert.rejects(run("root"), /Blocked tool call/)
+  await started
+  await hooks["chat.message"]({ sessionID: "root", messageID: "second" }, {})
+  release()
+  await Promise.all([a, b])
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fetches.length, 1)
+  assert.deepEqual(aborted, [])
+})
+
+test("coalesced fresh emergencies cancel each actual session chain separately", async t => {
+  let release
+  let entered
+  const started = new Promise(resolve => { entered = resolve })
+  const fetches = stubFetch(t, () => { entered(); return new Promise(resolve => { release = () => resolve(response(answer(0.95))) }) })
+  const aborted = []
+  const hooks = await server({ client: { session: {
+    get: async ({ path }) => ({ data: { id: path.id } }),
+    abort: async ({ path }) => { aborted.push(path.id); return { data: true } },
+  } } }, config())
+  const run = sessionID => assert.rejects(hooks["tool.execute.before"]({ tool: "bash", sessionID }, { args: { command: "curl https://destination.example/" } }), /Blocked tool call/)
+  const a = run("root-a")
+  const b = run("root-b")
+  await started
+  release()
+  await Promise.all([a, b])
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fetches.length, 1)
+  assert.deepEqual(aborted.sort(), ["root-a", "root-b"])
+})
+
+test("only classified enabled emergency results request cancellation", async t => {
+  const aborted = []
+  stubFetch(t, () => response(answer(1)))
+  for (const options of [
+    { stopThreshold: null }, { enabled: false }, { deniedTools: ["bash"] },
+    { blockedHosts: ["destination.example"] },
+  ]) {
+    const hooks = await server({ client: { session: { abort: async () => { aborted.push(true); return { data: true } } } } }, config(options))
+    await hooks["tool.execute.before"]({ tool: "bash", sessionID: "root" }, { args: { command: "curl https://destination.example/" } }).catch(() => {})
+  }
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.deepEqual(aborted, [])
 })

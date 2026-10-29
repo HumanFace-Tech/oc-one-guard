@@ -12,10 +12,11 @@
     "index.js",
     "src/",
     "config.example.json",
-    "README.md"
+    "README.md",
+    "docs/assets/risk-policy.svg"
   ],
   "scripts": {
-    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/plugin.test.js test/security.test.js"
+    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/plugin.test.js test/security.test.js test/stop.test.js"
   },
   "engines": {
     "node": ">=18.17.0"

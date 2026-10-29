@@ -17,7 +17,7 @@ export function config(overrides = {}) {
 }
 
 export function answer(probability = 0.1) {
-  return { answers: { verdict: { type: "choice", choice: "allow", probabilities: { deny: probability } } } }
+  return { answers: { verdict: { type: "noul", noul: probability } } }
 }
 
 export function response(body = answer()) {
