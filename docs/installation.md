@@ -1,6 +1,32 @@
 # Install oc-one-guard
 
-Installation is explicit. Cloning or copying the repository does not register the plugin, edit OpenCode configuration, or create symlinks.
+Installation is explicit. Cloning, installing the package, or copying the repository does not register the plugin, edit OpenCode configuration, or create symlinks. You have to add the plugin entry yourself.
+
+This release supports OpenCode v1. Version 1.19.4 is tested, and the conservative supported range is `>=1.19.4 <2`; this is not a claim that every version in the range was tested. Older releases and v2 are unsupported.
+
+## Install from npm
+
+The package is published as [`oc-one-guard`](https://www.npmjs.com/package/oc-one-guard). Add it to the OpenCode configuration for one project:
+
+```json
+{
+  "plugin": [
+    [
+      "oc-one-guard@0.1.1",
+      {
+        "endpoint": "http://127.0.0.1:8081/v1/systemone",
+        "model": "h2o-lightning-4b"
+      }
+    ]
+  ]
+}
+```
+
+Pin the version you reviewed. OpenCode installs npm plugins with Bun at startup and caches them under `~/.cache/opencode/node_modules/`; an unpinned entry can pick up a newer release later. You do not need to run `npm install` in the project yourself.
+
+For every project, use the same entry in the global OpenCode configuration instead. Restart OpenCode after editing, and check the startup log for `Guard active` or a configuration problem. An entry that fails to load provides no protection.
+
+To uninstall, stop OpenCode, remove the `oc-one-guard` entry from the applicable configuration, and restart. There is no separate uninstall command and no symlink to clean up.
 
 ## Enable a local checkout
 
@@ -17,8 +43,6 @@ Keep the checkout in a stable directory, then add its absolute path to the OpenC
 Project-level registration affects that project. Registration in the user's global OpenCode configuration affects all projects for that user, so use it only if that is what you want. Do not use a package name for this checkout.
 
 After changing the plugin entry, restart OpenCode and check startup logs for successful activation and configuration errors. An entry that is missing or fails to load provides no protection.
-
-This release supports OpenCode v1. Version 1.19.4 is tested, and the conservative supported range is `>=1.19.4 <2`; this is not a claim that every version in the range was tested. Older releases and v2 are unsupported.
 
 ## Disable it if the judge is offline
 

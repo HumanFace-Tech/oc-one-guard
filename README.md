@@ -22,6 +22,26 @@ The default `noul` question asks whether the call violates exfiltration policy. 
 - Setup is opt-in. Cloning this repo does not register the plugin or change OpenCode configuration.
 - The judge receives rendered tool arguments and, in some cases, staged file contents. Pick an endpoint you trust.
 
+## Install
+
+Published on npm as [`oc-one-guard`](https://www.npmjs.com/package/oc-one-guard). Add it to one project's OpenCode config, pin the version you reviewed, then restart OpenCode:
+
+```json
+{
+  "plugin": [
+    [
+      "oc-one-guard@0.1.1",
+      {
+        "endpoint": "http://127.0.0.1:8081/v1/systemone",
+        "model": "h2o-lightning-4b"
+      }
+    ]
+  ]
+}
+```
+
+Use the global config instead if you want it in every project. To uninstall, remove that entry and restart. Full details and the local-checkout option: [installation](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/installation.md).
+
 ## How Does the Check Work?
 
 - [Read the short explainer](https://github.com/HumanFace-Tech/oc-one-guard/blob/main/docs/explainer.md) - Markdown with a flow diagram, right here on GitHub.
