@@ -74,6 +74,7 @@ export function createAuditLogger(config, client) {
               hosts: entry.hosts,
               durationMs: entry.durationMs,
               mode: entry.mode,
+              source: entry.source,
             },
           },
         })
@@ -95,6 +96,7 @@ export function createAuditLogger(config, client) {
       hosts: decision.hosts,
       durationMs: decision.durationMs,
       mode: decision.mode,
+      source: decision.source,
       // The rendered state is what the judge actually saw. It is recorded so
       // an incident can be reconstructed, and redacted so it does not become
       // a place where secrets pile up.

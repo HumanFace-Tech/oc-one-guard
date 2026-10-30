@@ -11,3 +11,4 @@ These records describe accepted design constraints. The implementation and tests
 - [0007 - Risk bands and best-effort run cancellation](0007-risk-bands-and-run-cancellation.md)
 - [0008 - Scope in-process state to projects](0008-project-state-scoping.md)
 - [0009 - Adopt the E02 default question](0009-e02-default-question.md)
+- [0010 - Use fallback only after a primary timeout](0010-timeout-only-fallback.md)

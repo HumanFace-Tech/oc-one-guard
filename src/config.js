@@ -105,6 +105,23 @@ export function normalizeConfig(raw) {
   if (typeof merged.model !== "string" || !merged.model.trim()) {
     errors.push("model must be a non-empty string")
   }
+  if (merged.fallback !== null) {
+    if (!isPlainObject(merged.fallback)) {
+      errors.push("fallback must be null or an object")
+    } else {
+      for (const field of ["endpoint", "model"]) {
+        if (typeof merged.fallback[field] !== "string" || !merged.fallback[field].trim()) errors.push(`fallback.${field} must be a non-empty string`)
+      }
+      for (const field of ["apiKey", "apiKeyEnv"]) {
+        if (merged.fallback[field] !== undefined && typeof merged.fallback[field] !== "string") errors.push(`fallback.${field} must be a string`)
+      }
+      if (merged.fallback.timeoutMs !== undefined && (typeof merged.fallback.timeoutMs !== "number" || !Number.isInteger(merged.fallback.timeoutMs) || merged.fallback.timeoutMs < 1 || merged.fallback.timeoutMs > 2147483647)) {
+        errors.push("fallback.timeoutMs must be an integer between 1 and 2147483647")
+      }
+      if (Object.keys(merged.fallback).some(key => !["endpoint", "model", "apiKey", "apiKeyEnv", "timeoutMs"].includes(key))) errors.push("fallback contains an unsupported field")
+      merged.fallback = { ...merged.fallback, timeoutMs: merged.fallback.timeoutMs ?? DEFAULTS.timeoutMs }
+    }
+  }
 
   const threshold = Number(merged.denyThreshold)
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {

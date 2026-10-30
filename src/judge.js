@@ -174,47 +174,49 @@ export async function requestDecision(options) {
   if (options.apiKey) headers.Authorization = `Bearer ${options.apiKey}`
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs)
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new JudgeError(`Judge request timed out after ${options.timeoutMs}ms`, { kind: "timeout" }))
+      controller.abort()
+    }, options.timeoutMs)
+  })
   try {
-    const response = await fetchImpl(options.endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
-
-    const text = await response.text()
-
-    if (!response.ok) {
-      throw new JudgeError(`Judge returned HTTP ${Number.isInteger(response.status) ? response.status : "error"}`, {
-        kind: "http",
+    const operation = async () => {
+      const response = await fetchImpl(options.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
       })
-    }
 
-    let body
-    try {
-      body = JSON.parse(text)
-    } catch (error) {
-      throw new JudgeError("Judge returned invalid JSON", {
-        kind: "malformed",
-        cause: error,
-      })
-    }
+      if (!response.ok) {
+        throw new JudgeError(`Judge returned HTTP ${Number.isInteger(response.status) ? response.status : "error"}`, {
+          kind: "http",
+        })
+      }
 
-    if (!body || typeof body.answers !== "object" || body.answers === null) {
-      throw new JudgeError("Judge response is missing an `answers` object", { kind: "malformed" })
-    }
+      const text = await response.text()
+      let body
+      try {
+        body = JSON.parse(text)
+      } catch (error) {
+        throw new JudgeError("Judge returned invalid JSON", {
+          kind: "malformed",
+          cause: error,
+        })
+      }
 
-    return body
+      if (!body || typeof body.answers !== "object" || body.answers === null) {
+        throw new JudgeError("Judge response is missing an `answers` object", { kind: "malformed" })
+      }
+
+      return body
+    }
+    return await Promise.race([operation(), timeout])
   } catch (error) {
     if (error instanceof JudgeError) throw error
-    const aborted = error?.name === "AbortError"
-    throw new JudgeError(
-      aborted
-        ? `Judge request timed out after ${options.timeoutMs}ms`
-        : "Judge request failed",
-      { kind: aborted ? "timeout" : "network", cause: error },
-    )
+    throw new JudgeError("Judge request failed", { kind: "network", cause: error })
   } finally {
     clearTimeout(timer)
   }

@@ -606,7 +606,8 @@
             <p>
               Whatever is left is rendered - tool, arguments, extracted hosts and paths, file
               references, and the contents of files the agent wrote earlier - and POSTed to the
-              configured endpoint with the model id and the question definitions.
+              configured primary endpoint with the model id and the question definitions. If that
+              request times out, an optional fallback can receive the same rendered state.
             </p>
             <p>Default timeout is 20 seconds, and the timeout covers reading the response body.</p>
             <span class="tag tag-judge">judge called</span>
@@ -632,8 +633,10 @@
               per run; a new message can race an abort already dispatched.
             </p>
             <p>
-              A failed request, a timeout, an unparseable answer, or an answer that cannot be
-              classified is treated as a denial by default.
+              A failed request follows <code>failMode</code>, and an answer that cannot be
+              classified follows <code>unknownMode</code>; both default to a denial. An optional
+              fallback runs only after a primary timeout, not after other errors or an
+              unclassifiable answer. If both requests fail, <code>failMode</code> applies.
             </p>
             <span class="tag tag-judge">from judge</span>
           </div>
@@ -839,7 +842,8 @@ bash /tmp/staged.sh</code></pre>
           <p>
             Rendered tool arguments and extracted facts go to the configured endpoint. Depending on
             the call, that includes secret-bearing command strings and the contents of files the
-            agent wrote.
+            agent wrote. If the primary times out and timeout fallback is configured, the fallback
+            receives the same unredacted state too. Both endpoints must be trusted.
           </p>
           <p>
             Redaction runs on audit state and error text, and on the command preview in a blocked
@@ -856,8 +860,9 @@ bash /tmp/staged.sh</code></pre>
             encrypt anything.
           </p>
           <p>
-            Use loopback or a trusted, protected network endpoint, and protect the audit files -
-            they can contain rendered state too.
+            Use loopback or a trusted, protected network endpoint for each judge. HTTPS or another
+            protected transport is needed off loopback; a bearer key does not encrypt traffic.
+            Protect the audit files too, since they can contain rendered state.
           </p>
         </div>
 
@@ -878,6 +883,7 @@ bash /tmp/staged.sh</code></pre>
           <h3>Audit trail</h3>
           <p>
             Verdicts go to the OpenCode server log, and optionally to a JSONL file with rotation.
+            Classified verdicts record whether the primary or fallback supplied the decision.
             The OpenCode log keeps verdict metadata, destinations, reason, and timing - but not the
             rendered state.
           </p>

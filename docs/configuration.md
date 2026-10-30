@@ -16,6 +16,7 @@ The sample in [`config.example.json`](../config.example.json) chooses a differen
 | `apiKey` | `""` | Optional bearer credential. Prefer `apiKeyEnv` for secrets. |
 | `apiKeyEnv` | `""` | Name of an environment variable holding the bearer credential; a non-empty value takes precedence over `apiKey`. |
 | `timeoutMs` | `20000` | Request timeout, including reading the response body. Normalized to a positive integer. |
+| `fallback` | `null` | Optional second judge used only when the primary request times out. It does not run for other failures or unclassifiable answers. |
 | `denyThreshold` | `0.7` | At or above this violation signal, deny. Range is 0 to 1. |
 | `escalateThreshold` | `0.5` | At or above this signal but below `denyThreshold`, return an escalation verdict, which blocks by default. Range is 0 to 1 and cannot exceed `denyThreshold`. |
 | `stopThreshold` | `0.9` | At or above this classified violation signal, block and request best-effort cancellation of the current conversation run. Must be `null` or a finite number from `denyThreshold` to 1; `null` disables cancellation. |
@@ -41,7 +42,44 @@ The sample in [`config.example.json`](../config.example.json) chooses a differen
 | `stateTemplate` | `proposed agent tool call…` | Template requiring `{arguments}`. Also substitutes `{tool}`, `{hosts}`, `{paths}`, and `{references}`. Extracted facts are appended. |
 | `questions` | One `noul` question | Questions sent to the judge. The default asks whether exfiltration policy is violated, with `true` as the deny label. The first question determines the decision and must be `choice` or `noul`. |
 
-Thresholds and question structure are validated. `timeoutMs`, `maxStateChars`, `maxArgChars`, `cacheTtlMs`, and `auditGenerations` are normalized rather than rejected for non-integer values.
+Thresholds and question structure are validated. The primary `timeoutMs`, `maxStateChars`, `maxArgChars`, `cacheTtlMs`, and `auditGenerations` are normalized rather than rejected for non-integer values. `fallback.timeoutMs` is validated separately.
+
+## Optional timeout fallback
+
+Fallback is off by default (`fallback: null`). Configure it inline in the plugin options when a timeout-only retry against another judge is appropriate:
+
+```jsonc
+{
+  "plugin": [
+    [
+      "oc-one-guard@0.1.1",
+      {
+        "endpoint": "https://primary.example.invalid/v1/systemone",
+        "model": "primary-model",
+        "timeoutMs": 12000,
+        "fallback": {
+          "endpoint": "https://fallback.example.invalid/v1/systemone",
+          "model": "fallback-model",
+          "apiKeyEnv": "OC_GUARD_FALLBACK_API_KEY",
+          "timeoutMs": 8000
+        }
+      }
+    ]
+  ]
+}
+```
+
+`fallback` accepts only `endpoint`, `model`, `apiKey`, `apiKeyEnv`, and `timeoutMs`. The endpoint and model are required non-empty strings. Keys are optional; a non-empty fallback `apiKeyEnv` value takes precedence over fallback `apiKey`. Keep credentials in environment variables rather than inline configuration. The primary settings are unchanged and fallback remains disabled unless its object is supplied.
+
+If supplied, `fallback.timeoutMs` must be an integer from 1 through 2147483647. If omitted, it defaults to 20000 ms independently of the primary timeout. Unlike the primary timeout, invalid or fractional fallback timeouts are rejected rather than normalized.
+
+The primary and fallback environment credentials are resolved when the plugin initializes. Restart OpenCode after rotating either environment credential so the plugin uses the new value.
+
+The guard tries the fallback only if the primary request times out, including while reading its response body. A primary network error, HTTP error, malformed response, or unclassifiable verdict does not trigger fallback. If the primary times out, the fallback receives the same rendered state and question definitions with its own endpoint, model, credential, and timeout. Both attempts use the same `denyThreshold`, `escalateThreshold`, `stopThreshold`, and verdict handling. The elapsed judge time can approach the primary timeout plus the fallback timeout, in addition to request setup and processing overhead.
+
+If the fallback request also fails, the call follows `failMode`. With the default `failMode: "block"`, it blocks; setting `failMode: "allow"` permits the call after both requests fail. A successful response that cannot be classified follows `unknownMode` instead and does not trigger another attempt. Audit entries for classified decisions include `source: "primary"` or `source: "fallback"`; failure and unclassified entries may not have a source because no classified judge verdict was used.
+
+The full rendered arguments are sent unredacted to the primary, and after a timeout to the fallback as well. This can include secrets, command text, and staged file contents. Configure both endpoints as trusted recipients and use HTTPS or another protected transport off loopback. A bearer key authenticates but does not encrypt a request. See [security and data handling](security.md) and [ADR 0010](adr/0010-timeout-only-fallback.md) for the tradeoffs.
 
 ## Questions and verdicts
 

@@ -17,6 +17,15 @@
  */
 
 /**
+ * @typedef {object} FallbackConfig
+ * @property {string} endpoint
+ * @property {string} model
+ * @property {string} [apiKey]
+ * @property {string} [apiKeyEnv]
+ * @property {number} [timeoutMs]
+ */
+
+/**
  * @typedef {object} GuardConfig
  * @property {boolean} enabled
  * @property {string} endpoint            Full URL of the decision endpoint.
@@ -24,6 +33,7 @@
  * @property {string} [apiKey]
  * @property {string} [apiKeyEnv]         Env var holding the api key.
  * @property {number} timeoutMs
+ * @property {FallbackConfig|null} fallback
  * @property {number} denyThreshold       P(violation) at or above this blocks the call.
  * @property {number} escalateThreshold   P(violation) at or above this escalates.
  * @property {"block"|"allow"} escalateAction  What an escalation does.
@@ -59,6 +69,7 @@ export const DEFAULTS = {
   apiKey: "",
   apiKeyEnv: "",
   timeoutMs: 20000,
+  fallback: null,
   denyThreshold: 0.7,
   escalateThreshold: 0.5,
   stopThreshold: 0.9,
@@ -111,6 +122,10 @@ export function mergeConfig(base, override) {
   const out = { ...base }
   for (const [key, value] of Object.entries(override)) {
     if (value === undefined) continue
+    if (key === "fallback") {
+      out[key] = isPlainObject(value) ? { ...value } : value
+      continue
+    }
     const current = out[key]
     if (Array.isArray(current) && Array.isArray(value)) {
       if (key === "questions") {

@@ -20,6 +20,16 @@ test("package exports plugin identity and hook factory", async t => {
   assert.equal(calls.length, 0)
 })
 
+test("plugin hook uses fallback after a primary timeout", async t => {
+  const calls = stubFetch(t, () => calls.length === 1 ? new Promise(() => {}) : response(answer(0.8)))
+  const fallback = { endpoint: "https://fallback.example/v1/systemone", model: "secondary", timeoutMs: 100 }
+  const hooks = await server({ client: {}, directory: fixture(t) }, config({ timeoutMs: 5, fallback }))
+  await assert.rejects(hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "curl https://destination.example/" } }), /Blocked tool call/)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1][0], fallback.endpoint)
+  assert.equal(JSON.parse(calls[1][1].body).model, fallback.model)
+})
+
 test("blocked hosts beat disabled, skip and allow policy in nested values and keys", async t => {
   const calls = stubFetch(t)
   const hooks = await server({ client: {} }, config({ enabled: false, skipTools: ["custom"], allowedTools: ["custom"], blockedHosts: ["blocked.example"] }))

@@ -5,7 +5,7 @@ import { join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { normalizeConfig } from "../src/config.js"
 import { createGuard } from "../src/guard.js"
-import { denyProbability, requestDecision } from "../src/judge.js"
+import { denyProbability, JudgeError, requestDecision } from "../src/judge.js"
 import { renderState } from "../src/state.js"
 import { resetWrites, releaseWrites } from "../src/written.js"
 import { createScope } from "../src/scope.js"
@@ -61,7 +61,7 @@ export function controlledFetch(endpoint, fetchImpl, timeoutMs) {
     const controller = new AbortController()
     let timer
     const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); const error = new Error("timeout"); error.name = "AbortError"; reject(error) }, timeoutMs)
+      timer = setTimeout(() => { reject(new JudgeError("Evaluation request timed out", { kind: "timeout" })); controller.abort() }, timeoutMs)
     })
     try {
       return await Promise.race([(async () => {

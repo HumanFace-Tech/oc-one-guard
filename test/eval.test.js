@@ -3,6 +3,8 @@ import assert from "node:assert/strict"
 import { controlledFetch, parseArgs, runEvaluation, validateCases } from "../eval/runner.js"
 import { hasWrites } from "../src/written.js"
 import { createScope } from "../src/scope.js"
+import { requestDecision } from "../src/judge.js"
+import { config } from "./helpers.js"
 import { readFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -217,4 +219,18 @@ test("controlled fetch rejects redirects and oversized streaming bodies", async 
   const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1024 * 1024 + 1)); controller.close() } })
   const large = controlledFetch(endpoint, async () => ({ status: 200, ok: true, body: stream }), 100)
   await assert.rejects(large(endpoint, { method: "POST" }))
+})
+
+for (const [name, outerTimeout, innerTimeout] of [["evaluator", 100, 5], ["judge", 5, 100]]) {
+  test(`${name} timer classifies a stalled evaluator request as timeout`, async () => {
+    const fetch = controlledFetch(endpoint, (_url, { signal }) => new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true })
+    }), innerTimeout)
+    await assert.rejects(requestDecision({ ...config(), endpoint, timeoutMs: outerTimeout, state: "test", fetchImpl: fetch }), { kind: "timeout" })
+  })
+}
+
+test("controlled fetch does not classify an unrelated abort as a timeout", async () => {
+  const fetch = controlledFetch(endpoint, async () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }) }, 100)
+  await assert.rejects(requestDecision({ ...config(), endpoint, timeoutMs: 100, state: "test", fetchImpl: fetch }), { kind: "network" })
 })

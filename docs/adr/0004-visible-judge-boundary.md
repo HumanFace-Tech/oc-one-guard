@@ -8,8 +8,8 @@ The judge evaluates rendered tool state. Depending on the call, that state can i
 
 ## Decision
 
-Send review state only to the configured System One endpoint. Treat that endpoint as trusted with the submitted data. Keep redaction out of the judge request and document that audit/error redaction is best-effort.
+Send review state to the configured primary System One endpoint. If an optional fallback is configured, send the same state there only after a primary timeout. Treat every configured endpoint as trusted with the submitted data. Keep redaction out of judge requests and document that audit/error redaction is best-effort.
 
 ## Consequences
 
-Users must choose a trusted endpoint and protect audit files. The default loopback endpoint uses HTTP; a bearer API key does not encrypt traffic. Documentation must not suggest that audit redaction protects judge requests.
+Users must choose trusted endpoints and protect audit files. The default loopback endpoint uses HTTP; a bearer API key does not encrypt traffic. Documentation must not suggest that audit redaction protects judge requests. The timeout-only fallback tradeoff is recorded in [ADR 0010](0010-timeout-only-fallback.md).

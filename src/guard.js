@@ -133,8 +133,8 @@ export function hostMatches(host, patterns) {
  * complete configuration and effective credentials isolate instances with
  * different policies or judge requests. The state captures staged content.
  */
-export function scopedCacheKey(config, tool, args, state, apiKey, staged, scope) {
-  return createHash("sha256").update(stableStringify({ config, tool, args, state, apiKey, staged, scope })).digest("hex")
+export function scopedCacheKey(config, tool, args, state, apiKey, staged, scope, fallbackApiKey) {
+  return createHash("sha256").update(stableStringify({ config, tool, args, state, apiKey, fallbackApiKey, staged, scope })).digest("hex")
 }
 
 function stableStringify(value) {
@@ -174,7 +174,7 @@ function stringifySafely(value, seen) {
 }
 
 export class GuardDecision {
-  constructor({ verdict, reason, probability, confidence, tool, hosts, durationMs, mode, state, stop = false }) {
+  constructor({ verdict, reason, probability, confidence, tool, hosts, durationMs, mode, state, stop = false, source }) {
     this.verdict = verdict
     this.reason = reason
     this.probability = probability
@@ -185,6 +185,7 @@ export class GuardDecision {
     this.mode = mode
     this.state = state
     this.stop = stop
+    this.source = source
   }
 
   get blocked() {
@@ -210,6 +211,8 @@ export function createGuard(config, deps = {}) {
     const fromEnv = process.env[config.apiKeyEnv]
     if (fromEnv) apiKey = fromEnv
   }
+  let fallbackApiKey = config.fallback?.apiKey
+  if (config.fallback?.apiKeyEnv && process.env[config.fallback.apiKeyEnv]) fallbackApiKey = process.env[config.fallback.apiKeyEnv]
 
   function cacheGet(key) {
     if (!config.cacheEnabled) return undefined
@@ -358,7 +361,7 @@ export function createGuard(config, deps = {}) {
     }
 
     const staged = referencedWrites(fullText(tool, args), directory, scope).map(hit => snapshots.get(hit.path) ?? getWrite(hit.path, undefined, scope))
-    const key = scopedCacheKey(config, tool, args, state, apiKey, staged, scope)
+    const key = scopedCacheKey(config, tool, args, state, apiKey, staged, scope, fallbackApiKey)
     const cached = cacheGet(key)
     if (cached?.pending) {
       const decision = await cached.pending
@@ -400,8 +403,9 @@ export function createGuard(config, deps = {}) {
 
   async function evaluateWithJudge({ tool, args, state, hosts, started }) {
     let response
+    let source = "primary"
     try {
-      response = await requestDecision({
+      const request = {
         endpoint: config.endpoint,
         model: config.model,
         state,
@@ -409,7 +413,14 @@ export function createGuard(config, deps = {}) {
         timeoutMs: config.timeoutMs,
         apiKey,
         fetchImpl,
-      })
+      }
+      try {
+        response = await requestDecision(request)
+      } catch (error) {
+        if (!(error instanceof JudgeError) || error.kind !== "timeout" || !config.fallback) throw error
+        source = "fallback"
+        response = await requestDecision({ ...request, ...config.fallback, apiKey: fallbackApiKey })
+      }
     } catch (error) {
       const message = error instanceof JudgeError && ["http", "malformed", "timeout", "network", "unavailable"].includes(error.kind) ? `judge ${error.kind} error` : "judge error"
       const blocked = config.failMode === "block"
@@ -468,6 +479,7 @@ export function createGuard(config, deps = {}) {
       hosts,
       durationMs: now() - started,
       mode: "judge",
+      source,
       state,
       stop: config.stopThreshold !== null && Number.isFinite(probability) && probability >= config.stopThreshold,
     })

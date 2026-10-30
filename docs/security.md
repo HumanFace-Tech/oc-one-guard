@@ -10,11 +10,13 @@ An unregistered or unloaded plugin provides no protection. Fail-closed behavior 
 
 ## Data handled
 
-For calls that reach the judge, the plugin sends rendered tool arguments and extracted facts to the configured System One endpoint. Depending on the call, this may include command text or staged file contents. Redaction does not run on the judge request. The endpoint must be trusted to receive that data.
+For calls that reach a judge, the plugin sends rendered tool arguments and extracted facts to the primary System One endpoint. Depending on the call, this may include command text or staged file contents. Redaction does not run on a judge request. Trust every configured endpoint to receive that data.
+
+An optional fallback can receive the same unredacted rendered state when the primary request times out. It is not used for other primary errors or unclassifiable responses. When fallback is enabled, sensitive arguments may reach both endpoints, including the primary that timed out and the fallback retry. Configure and secure both destinations accordingly.
 
 Rendered state can include tool arguments, extracted hosts and paths, file references, and content from an agent-written file later run as a script. Extracted facts take priority over raw arguments within the full-state limit. If the required facts cannot fit, the call is blocked. These limits do not make sensitive input safe to disclose.
 
-Audit output may contain rendered state after best-effort redaction. Protect audit files and their rotated copies. The default endpoint is loopback HTTP. A bearer API key authenticates a request but does not encrypt it; use a protected transport when the judge is not on loopback.
+Audit output may contain rendered state after best-effort redaction. Classified decisions record whether the primary or fallback supplied the verdict. Failure and unclassified entries may not have a source. Protect audit files and their rotated copies. The default endpoint is loopback HTTP. A bearer API key authenticates a request but does not encrypt it; use HTTPS or another protected transport when either judge is not on loopback.
 
 Redaction recognizes selected token forms, private-key blocks, credential assignments, connection-string passwords, and common secret query parameters. It can miss secrets. OpenCode logs omit rendered state but contain verdict metadata, destinations, reason, and timing. Audit files may still contain sensitive state; restrict access and retention.
 
@@ -36,11 +38,12 @@ In-flight write, edit, and patch calls remain pending until a matching completio
 - A signal from `0.50` to below `0.70` blocks for manual review; this hook cannot open a native approval prompt or ask the user directly.
 - A signal at or above `0.90` also requests best-effort cancellation of the calling conversation run and verified ancestors. It does not close or delete the conversation, and it cannot guarantee that an in-flight tool or child process stops. Set `stopThreshold` to `null` to disable this request.
 - Judge request failures and unusable verdicts block by default.
+- An optional fallback runs only after a primary timeout. A failure of both requests follows `failMode`; a response that cannot be classified follows `unknownMode` without trying fallback.
 - The configured escalation band blocks by default; `escalateAction: "allow"` can override that decision without prompting the user.
 - Invalid configuration is logged and falls back to validated defaults.
 - Host checks and filesystem tracking have bounded, heuristic coverage.
 
-Configuration can change several decisions, including allowing escalation or failure cases. See [configuration](configuration.md).
+Configuration can change several decisions, including allowing escalation or failure cases. Fallback also adds another trusted recipient for unredacted judge state. See [configuration](configuration.md) and [ADR 0010](adr/0010-timeout-only-fallback.md).
 
 ## Report a vulnerability
 

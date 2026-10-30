@@ -22,6 +22,8 @@ The default `noul` question asks whether the call violates exfiltration policy. 
 - Setup is opt-in. Cloning this repo does not register the plugin or change OpenCode configuration.
 - The judge receives rendered tool arguments and, in some cases, staged file contents. Pick an endpoint you trust.
 
+An optional timeout-only fallback can send the same unredacted state to a second trusted judge; see [advanced configuration](docs/configuration.md#optional-timeout-fallback).
+
 ## Install
 
 Published on npm as [`oc-one-guard`](https://www.npmjs.com/package/oc-one-guard). Add it to one project's OpenCode config, pin the version you reviewed, then restart OpenCode:

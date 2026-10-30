@@ -25,7 +25,7 @@ If Mermaid does not render where you're reading this, here's the same flow in pl
 1. OpenCode proposes a tool call. The plugin checks it in the `tool.execute.before` hook, before the tool runs.
 2. The local blocked-host scan checks explicit URLs in argument strings and object keys. A matching host, or an incomplete scan, blocks the call before overrides or the judge.
 3. Tool policy runs. `deniedTools` blocks; `skipTools` and `allowedTools` bypass the judge. A prefilter also allows calls with no detected outbound surface.
-4. Calls still needing review go to the configured System One judge.
+4. Calls still needing review go to the configured primary System One judge. If that request times out and an optional fallback is configured, the same state is sent to the fallback.
 5. The result allows, escalates, or blocks the proposed call.
 
 ## What do the thresholds mean?
@@ -36,7 +36,7 @@ The default question is `noul`, with `true` configured as the violation label. T
 - From `0.50` up to (but not including) `0.70`: block for manual review. This hook cannot create a native approval prompt or ask the user directly. `escalateAction: "allow"` is an explicit configuration override, not a prompt.
 - `0.70` or higher: deny.
 - `0.90` or higher: also request best-effort cancellation of the current conversation run and its verified ancestors. The conversation is retained. `stopThreshold: null` disables this; [configuration](configuration.md) explains the remaining per-run race.
-- Judge offline, request error or timeout, malformed response, or unclassifiable answer: block by default (`failMode` and `unknownMode`).
+- Judge request failures block by default (`failMode`); an unclassifiable answer blocks by default (`unknownMode`). An optional fallback is tried only after a primary timeout. If both requests fail, `failMode` applies; an unclassifiable primary response does not invoke fallback.
 
 The thresholds and question are configurable. `stopThreshold` must be `null` or a finite value from `denyThreshold` through `1`; `null` disables run-cancellation requests. Failures, unclassifiable output, blocked hosts, and denied tools do not trigger cancellation. See [ADR 0007](adr/0007-risk-bands-and-run-cancellation.md) for cancellation limits.
 
@@ -53,6 +53,7 @@ The heuristics and judge can miss these, and can also flag legitimate work. No c
 ## What should you keep in mind?
 
 - The judge request is **not redacted**. It can contain rendered arguments and, in some cases, staged file contents. Use an endpoint you trust.
+- With optional timeout fallback enabled, both the primary and fallback can receive the same unredacted state. Trust and protect both endpoints. See [configuration](configuration.md#optional-timeout-fallback).
 - The plugin cannot control arbitrary network activity from tools or child processes. Treat it as a guardrail, not a firewall or sandbox.
 - This release targets OpenCode v1. Version `1.19.4` is the tested host; v2 is not supported.
 
