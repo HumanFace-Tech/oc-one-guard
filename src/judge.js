@@ -21,7 +21,7 @@
  *   guard reads the probability of the option named by the question's
  *   `denyLabel`.
  * - `noul` normally returns P(true); llama.cpp's LEV returns a normalized
- *   expected rating instead. The criteria must be
+ *   expected rating instead. Optional criteria must be
  *   exactly the `true`/`false` pair, and `denyLabel` says which of the two
  *   means "this is a violation" — `denyLabel: "true"` when `true` is the
  *   violation, `denyLabel: "false"` when the violation is the negative
@@ -59,8 +59,8 @@ export function buildRequest(model, state, questions) {
   const payload = {}
   for (const question of questions) {
     const body = { type: question.type, instructions: question.instructions }
-    if (question.type === "noul" || question.type === "choice") {
-      body.criteria = question.criteria ?? {}
+    if ((question.type === "noul" || question.type === "choice") && question.criteria !== undefined) {
+      body.criteria = question.criteria
     }
     if (question.type === "score") {
       body.criteria = question.levels ?? []
@@ -121,7 +121,7 @@ export function denyProbability(question, answer) {
 
   if (question?.type === "noul") {
     const denyLabel = findDenyOption(question)
-    if (!denyLabel) return undefined
+    if (denyLabel !== "true" && denyLabel !== "false") return undefined
     // The affirmative label must be resolvable, otherwise the server's
     // probability could not be attributed to either side.
     const affirmative = resolveAffirmativeLabel(question)
@@ -144,13 +144,14 @@ export function denyProbability(question, answer) {
 /**
  * The label a `noul` question treats as affirmative.
  *
- * A `noul` question carries exactly the criteria `true` and `false`, and the
- * server derives the affirmative from those keys — it is always `true`.
- * The function returns undefined for anything else, because a probability
- * that cannot be attributed to either side would invert the verdict.
+ * A `noul` question has implicit true/false labels when criteria are absent.
+ * Explicit criteria must contain exactly those two keys.
  */
 export function resolveAffirmativeLabel(question) {
-  const criteria = question?.criteria ?? {}
+  if (!question || question.type !== "noul") return undefined
+  const criteria = question.criteria
+  if (criteria === undefined) return "true"
+  if (!criteria || typeof criteria !== "object" || Array.isArray(criteria) || Object.keys(criteria).length !== 2) return undefined
   if (!Object.hasOwn(criteria, "true")) return undefined
   if (!Object.hasOwn(criteria, "false")) return undefined
   return "true"

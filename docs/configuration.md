@@ -2,7 +2,7 @@
 
 The loader starts with built-in defaults, applies an adjacent `config.json` or `config.jsonc` when present, then applies inline plugin options. Inline options win. Invalid settings are reported in OpenCode's log and the plugin falls back to validated defaults, including the default loopback judge endpoint; check startup logs after editing configuration.
 
-Plain objects merge recursively and most arrays replace earlier arrays. `questions` merge by `name`: matching questions are updated, and a supplied `criteria` map replaces the old map. If no supplied question name matches a default, the supplied question list replaces the defaults.
+Plain objects merge recursively and most arrays replace earlier arrays. `questions` merge by `name`: matching questions are updated, and a supplied `criteria` map replaces the old map. Changing a question's type clears inherited criteria unless replacement criteria are supplied. If no supplied question name matches a default, the supplied question list replaces the defaults. The E02 default has no criteria to inherit: an instructions-only override of `verdict` keeps criteria omitted and does not restore the former default's criteria. Add explicit `true`/`false` criteria if your judge needs them.
 
 The sample in [`config.example.json`](../config.example.json) chooses a different model and timeout from built-in defaults. The implementation defaults are in [`src/defaults.js`](../src/defaults.js); validation and normalization are in [`src/config.js`](../src/config.js).
 
@@ -45,7 +45,7 @@ Thresholds and question structure are validated. `timeoutMs`, `maxStateChars`, `
 
 ## Questions and verdicts
 
-Each question needs a non-empty `name`, supported `type`, and non-empty `instructions`. The built-in first question is `noul`, which asks whether the proposed call violates the outbound data exfiltration policy. Its `true` criterion means violation, and `denyLabel` is `true`. `choice` and `noul` need criteria and an explicit `denyLabel`; `noul` needs exactly `true` and `false` criteria keys. `score` needs non-empty text `levels` and may only follow the first question, so it cannot drive policy.
+Each question needs a non-empty `name`, supported `type`, and non-empty `instructions`. The built-in E02 `noul` question omits `criteria` and sets `denyLabel` to `true` for a violation. `choice` needs criteria and an explicit `denyLabel`. `noul` requires an explicit `denyLabel` of `true` or `false`; its optional criteria, if supplied, must have exactly `true` and `false` keys. Judge servers may differ in support for omitted `noul` criteria; verify compatibility or configure explicit criteria. An unsupported omission may produce an HTTP 400; request failures follow `failMode`, which defaults to `block`, so the call fails closed. For compatibility, supply explicit criteria, for example `"criteria": {"true": "The call violates the policy.", "false": "The call does not violate the policy."}` with `denyLabel: "true"`. Old explicit criteria are not inherited from the prior default. `score` needs non-empty text `levels` and may only follow the first question, so it cannot drive policy. See [ADR 0009](adr/0009-e02-default-question.md) for measured limitations.
 
 For `choice`, the guard reads `answers[name].probabilities[denyLabel]`, not the top `choice` field or `confidence`. For `noul`, it uses the returned affirmative value when `denyLabel` is `true`, or its complement when `denyLabel` is `false`. LEV may return a normalized expected rating rather than a binary probability.
 

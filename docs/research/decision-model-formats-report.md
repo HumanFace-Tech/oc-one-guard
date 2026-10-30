@@ -58,7 +58,7 @@ The endpoint receives the rendered state. This can contain tool arguments and, i
 
 ### `noul`: affirmative probability
 
-**Confirmed local fact.** In `src/judge.js`, a normal `noul` answer carries a scalar probability for the affirmative label, conventionally `P(true)`. The configured `denyLabel` determines whether that probability is the violation probability or must be complemented. Configuration validation requires exactly the `true` and `false` criteria and a valid `denyLabel`.
+**Historical local fact.** At the time of this research, `src/judge.js` treated a normal `noul` answer as a scalar probability for the affirmative label, conventionally `P(true)`. The configured `denyLabel` determined whether that probability was the violation probability or had to be complemented. Validation then required both `true` and `false` criteria and a valid `denyLabel`; criteria became optional under [ADR 0009](../adr/0009-e02-default-question.md).
 
 The upstream llama.cpp LEV implementation has a specific exception: it reads nine ratings, from 0 (certainly no) to 8 (certainly yes), and returns `sum(p_i * i / 8)`. This is an expected rating normalized to 0-1, not the probability assigned to one binary true label. The plugin treats it as an affirmative signal without a separate LEV-specific calibration step. Do not assume that every server calling its response `noul` has identical semantics without checking its implementation.
 

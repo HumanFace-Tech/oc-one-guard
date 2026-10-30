@@ -69,8 +69,24 @@ test("question merge replaces criteria and custom question replaces first defaul
   assert.equal(merged.questions[0].type, "choice")
   const custom = { ...q, name: "custom", type: "choice", instructions: "Decide" }
   assert.deepEqual(normalizeConfig({ questions: [custom] }).questions, [custom])
-  assert.ok(Object.hasOwn(DEFAULTS.questions[0].criteria, "true"))
+  assert.equal(Object.hasOwn(DEFAULTS.questions[0], "criteria"), false)
   assert.deepEqual(mergeConfig({ skipTools: ["read"] }, { skipTools: ["glob"] }).skipTools, ["glob"])
+})
+
+test("noul criteria overrides and type changes do not retain stale criteria", () => {
+  const criteria = { true: "bad", false: "safe" }
+  const explicit = mergeConfig(DEFAULTS, { questions: [{ name: "verdict", criteria }] })
+  assert.deepEqual(normalizeConfig(explicit).questions[0].criteria, criteria)
+  assert.deepEqual(mergeConfig(explicit, { questions: [{ name: "verdict", denyLabel: "false" }] }).questions[0].criteria, criteria)
+  const changed = mergeConfig(explicit, { questions: [{ name: "verdict", type: "choice", denyLabel: "deny" }] })
+  assert.equal(Object.hasOwn(changed.questions[0], "criteria"), false)
+  assert.throws(() => normalizeConfig(changed), /needs criteria/)
+  for (const criteria of [null, {}, [], "invalid", { true: "bad" }]) {
+    assert.throws(() => normalizeConfig({ questions: [{ name: "verdict", criteria }] }), /criteria/)
+  }
+  for (const denyLabel of [null, "", "deny", true]) {
+    assert.throws(() => normalizeConfig({ questions: [{ name: "verdict", denyLabel }] }), /denyLabel/)
+  }
 })
 
 test("invalid question semantics and missing arguments placeholder cannot load", () => {

@@ -155,9 +155,9 @@ export function normalizeConfig(raw) {
       if (question.type === "score" && (!Array.isArray(question.levels) || !question.levels.length || !question.levels.every(level => typeof level === "string" && level.trim()))) {
         errors.push(`question "${question.name}" needs a non-empty array of non-empty text levels`)
       }
-      if (question.type === "choice" || question.type === "noul") {
-        const criteria = question.criteria ?? {}
-        if (!Object.keys(criteria).length) {
+      if (question.type === "choice") {
+        const criteria = question.criteria
+        if (!isPlainObject(criteria) || !Object.keys(criteria).length) {
           errors.push(`question "${question.name}" needs criteria`)
         }
         // The deny option must be unambiguous, otherwise the probability is
@@ -165,31 +165,18 @@ export function normalizeConfig(raw) {
         const denyLabel = question.denyLabel
         if (!denyLabel) {
           errors.push(`question "${question.name}" needs an explicit denyLabel`)
-        } else if (!Object.hasOwn(criteria, denyLabel)) {
+        } else if (!isPlainObject(criteria) || !Object.hasOwn(criteria, denyLabel)) {
           errors.push(`question "${question.name}" denyLabel "${denyLabel}" is not one of its criteria`)
         }
       }
       if (question.type === "noul") {
-        // A `noul` answer is a single probability: that of the affirmative
-        // label. The server derives the affirmative from the criteria keys,
-        // so a `noul` question must carry exactly the `true`/`false` pair.
-        // Without both, the probability cannot be attributed to either side
-        // and the verdict would be inverted.
-        const criteria = question.criteria ?? {}
-        const keys = Object.keys(criteria)
-        const hasTrue = Object.hasOwn(criteria, "true")
-        const hasFalse = Object.hasOwn(criteria, "false")
-        if (!hasTrue || !hasFalse) {
-          errors.push(
-            `question "${question.name}" of type "noul" needs a "true" and a "false" criterion`,
-          )
-        }
-        if (keys.length !== 2) {
+        const criteria = question.criteria
+        if (criteria !== undefined && (!isPlainObject(criteria) || Object.keys(criteria).length !== 2 || !Object.hasOwn(criteria, "true") || !Object.hasOwn(criteria, "false"))) {
           errors.push(
             `question "${question.name}" of type "noul" must have exactly the "true" and "false" criteria`,
           )
         }
-        if (hasTrue && hasFalse && question.denyLabel !== "true" && question.denyLabel !== "false") {
+        if (question.denyLabel !== "true" && question.denyLabel !== "false") {
           errors.push(
             `question "${question.name}" denyLabel "${question.denyLabel}" must be "true" or "false" for a noul question`,
           )
