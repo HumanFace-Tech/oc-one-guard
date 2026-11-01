@@ -2,7 +2,7 @@
 
 These records describe accepted design constraints. The implementation and tests remain the source of truth for current behavior.
 
-- [0001 - Support OpenCode v1 only](0001-opencode-v1-only.md)
+- [0001 - Support OpenCode v1 only (superseded by 0011)](0001-opencode-v1-only.md)
 - [0002 - Keep installation opt-in](0002-opt-in-installation.md)
 - [0003 - Block when judgment fails or is unclear](0003-fail-closed-judgments.md)
 - [0004 - Keep the judge boundary visible](0004-visible-judge-boundary.md)
@@ -12,3 +12,4 @@ These records describe accepted design constraints. The implementation and tests
 - [0008 - Scope in-process state to projects](0008-project-state-scoping.md)
 - [0009 - Adopt the E02 default question](0009-e02-default-question.md)
 - [0010 - Use fallback only after a primary timeout](0010-timeout-only-fallback.md)
+- [0011 - Support OpenCode 2.x through a shared core and host adapters](0011-opencode-v2-adapter.md)

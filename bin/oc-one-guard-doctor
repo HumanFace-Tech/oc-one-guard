@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+// Checks that OpenCode 2.x loaded oc-one-guard. Exit codes: 0 loaded, 1 not loaded or failed, 2 check could not run.
+//
+// OpenCode 2.x keeps running when a plugin fails to load, and logs `failed to load plugin`.
+// Without this check, that failure leaves every tool call unreviewed. The `api provider.list`
+// operation waits for plugin activation before it answers, so the logs are complete when it exits.
+//
+// Usage: OPENCODE_BIN=opencode node bin/oc-one-guard-doctor
+// Run it against a private server (`--standalone`) so no background service is started.
+
+import { spawnSync } from "node:child_process"
+
+const bin = process.env.OPENCODE_BIN || "opencode"
+const args = ["--standalone", "--print-logs", "--log-level", "info", "api", "provider.list"]
+
+const run = spawnSync(bin, args, { encoding: "utf8", timeout: 120000, maxBuffer: 64 * 1024 * 1024 })
+if (run.error) {
+  console.error(`oc-one-guard doctor: could not run ${bin} (${run.error.code ?? "error"}).`)
+  process.exit(2)
+}
+if (run.status !== 0) {
+  console.error(`oc-one-guard doctor: OpenCode did not finish plugin activation (exit ${run.status}).`)
+  process.exit(2)
+}
+
+const lines = `${run.stdout ?? ""}\n${run.stderr ?? ""}`.split(/\r?\n/)
+const isGuard = line => /oc-one-guard/.test(line)
+
+if (lines.some(line => /failed to load plugin/.test(line) && isGuard(line))) {
+  console.error("oc-one-guard doctor: FAILED. OpenCode could not load oc-one-guard, so no tool call is reviewed.")
+  process.exit(1)
+}
+if (!lines.some(line => /loading plugin/.test(line) && isGuard(line))) {
+  console.error("oc-one-guard doctor: FAILED. OpenCode did not attempt to load oc-one-guard. Check the plugins entry.")
+  process.exit(1)
+}
+console.log("oc-one-guard doctor: OK. oc-one-guard was loaded and no load failure was logged.")

@@ -6,7 +6,7 @@ Keep `oc-one-guard` explicit to install, conservative on failures, and clear abo
 
 Trace the relevant flow from `index.js` into `src/` and check existing behavior before editing. Keep changes scoped. Do not add automatic global installation, OpenCode configuration edits, or symlinks.
 
-This release supports OpenCode v1 only. Version 1.19.4 is tested; the conservative supported range is `>=1.19.4 <2`. Do not claim compatibility with older versions or v2, or imply every version in the range has been tested. Registration and successful loading are prerequisites for protection.
+The OpenCode 1.x entry supports `>=1.19.4 <2`; version 1.19.4 is tested. The OpenCode 2.x entry (`setup`) is provisional until its tool-call tests are complete. Do not claim compatibility with older versions, or imply every version in a range has been tested. Registration and successful loading are prerequisites for protection; see [ADR 0011](adr/0011-opencode-v2-adapter.md) for the shared core and adapters.
 
 ## Tests and review
 

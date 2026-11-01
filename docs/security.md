@@ -4,9 +4,13 @@
 
 ## Host support and activation
 
-This release supports OpenCode v1 only, with a conservative supported range of `>=1.19.4 <2`. The tested host version is 1.19.4, not every version in that range. Older versions and OpenCode v2 are unsupported.
+The OpenCode 1.x entry is supported for `>=1.19.4 <2`. The tested host version is 1.19.4, not every version in that range. The OpenCode 2.x entry loads and registers its hooks on 2.2.x, but its end-to-end tool-call tests are not complete, so treat 2.x support as provisional. Older versions are unsupported.
 
-An unregistered or unloaded plugin provides no protection. Fail-closed behavior applies only after the plugin loads and OpenCode invokes its hooks. Check startup logs after registration and restart; a load failure cannot be handled by the guard itself.
+An unregistered or unloaded plugin provides no protection. Fail-closed behavior applies only after the plugin loads and OpenCode invokes its hooks.
+
+**A load failure fails open.** OpenCode 2.x logs `failed to load plugin` and keeps running with no guard, so tool calls are not reviewed. The guard cannot detect or handle its own load failure. Verify it after every install and config change with the doctor in [installation](installation.md#verify-it-loaded). OpenCode 2.x has no option that makes a plugin required, so this check is the only canary.
+
+On OpenCode 2.x the guard writes no server log and shows no toast. Its only signals are the blocked message the model receives, the optional `auditFile`, and the plugin state reported by the host. Without `auditFile`, a blocked call is visible only in the tool error.
 
 ## Data handled
 
@@ -30,7 +34,11 @@ Paths containing `..` and paths through symlinks are treated as ambiguous rather
 
 Tracked writes, pending mutations, uncertainty, revisions, and cached judge decisions are scoped to the OpenCode project ID and actual input worktree, including empty Git repositories with the `global` ID. Root and nested directories share a Git worktree scope; separate worktrees and clones do not. Global non-Git projects and incomplete metadata fall back to the normalized input directory. Instances without a usable absolute directory receive separate scopes. Writes outside the project root remain in the originating scope. This avoids accidental state sharing; it is not a security isolation boundary between projects.
 
-In-flight write, edit, and patch calls remain pending until a matching completion hook or correlated terminal tool-error event. Local-script execution and references to tracked files block while a mutation is pending. Interrupted events do not clear pending state because the underlying tool may still be running; if no completion event arrives, pending state remains until restart. Before allowing a shell call, the plugin rechecks file snapshots after the judge request. Aliases, hard links, filesystem changes outside observed hooks, and races after that final check remain limitations.
+A write, edit, or patch call the host does not correlate by session and call ID is refused, so it creates no pending state. Earlier versions kept such a call pending, which denied later script runs until restart.
+
+In-flight write, edit, and patch calls remain pending until a matching completion hook or correlated terminal tool-error event. On OpenCode 2.x the completion hook also runs for failed calls; a call interrupted by the user does not run it and keeps its pending state until restart. Plugin unload with a call still in flight marks the project scope uncertain, so script runs are denied until restart. Local-script execution and references to tracked files block while a mutation is pending. Interrupted events do not clear pending state because the underlying tool may still be running; if no completion event arrives, pending state remains until restart. Before allowing a shell call, the plugin rechecks file snapshots after the judge request. Aliases, hard links, filesystem changes outside observed hooks, and races after that final check remain limitations.
+
+The guard judges a call's input when its `execute.before` hook runs. On OpenCode 2.x, hooks registered by other plugins, and the `shell` domain's own `create.before` hook, run in an order this package does not control and can change a call's input after the guard judged it. Keep plugins that rewrite tool input out of the plugin list, or list them before the guard. Input that is not a JSON object, or a string that does not parse to one, is refused instead of being treated as empty. A pending write whose completion hook never fires is expired after ten minutes and marks the project scope uncertain.
 
 ## Default policy expectations
 

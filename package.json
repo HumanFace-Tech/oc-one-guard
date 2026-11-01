@@ -1,7 +1,7 @@
 {
   "name": "oc-one-guard",
-  "version": "0.1.2",
-  "description": "OpenCode v1-only plugin that checks proposed tool calls for outbound data exfiltration with a local decision-model judge",
+  "version": "0.2.0",
+  "description": "OpenCode plugin (v1 and v2) that checks proposed tool calls for outbound data exfiltration with a local decision-model judge",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -11,6 +11,7 @@
   "files": [
     "index.js",
     "src/",
+    "bin/oc-one-guard-doctor",
     "eval/runner.js",
     "eval/cases.json",
     "config.example.json",
@@ -18,7 +19,7 @@
     "docs/assets/risk-policy.svg"
   ],
   "scripts": {
-    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/fallback.test.js test/plugin.test.js test/security.test.js test/stop.test.js test/eval.test.js",
+    "test": "node --test test/config.test.js test/guard.test.js test/judge.test.js test/fallback.test.js test/plugin.test.js test/v2-adapter.test.js test/security.test.js test/stop.test.js test/eval.test.js",
     "eval:live": "node eval/runner.js"
   },
   "engines": {

@@ -18,6 +18,7 @@
 
 import { getWrite, referencedWrites } from "./written.js"
 import { requireScope } from "./scope.js"
+import { canonicalTool, pathsOf } from "./tools.js"
 
 const URL_PATTERN = /\b(?:https?|ftps?|sftp|scp|rsync|ssh|git):\/\/[^\s"'`<>|;&]+/gi
 
@@ -51,7 +52,7 @@ const LOCAL_ONLY_TOOLS = new Set([
  * file and execute it in a later call. Their content is judged when it
  * contains something that moves data.
  */
-const CONTENT_TOOLS = new Set(["write", "edit", "apply_patch"])
+const CONTENT_TOOLS = new Set(["write", "edit", "patch"])
 
 /**
  * Primitives that reach the network, matched against shell text.
@@ -138,13 +139,14 @@ export function runsLocalScript(text) {
  * @returns {string[]}
  */
 export function extractHosts(tool, args) {
+  const name = canonicalTool(tool)
   const chunks = []
-  if (tool === "bash" || tool === "shell" || tool === "run") {
+  if (name === "shell") {
     if (typeof args?.command === "string") chunks.push(args.command)
-  } else if (tool === "webfetch") {
+  } else if (name === "webfetch") {
     if (typeof args?.url === "string") chunks.push(args.url)
-  } else if (CONTENT_TOOLS.has(tool)) {
-    chunks.push(writtenContent(tool, args))
+  } else if (CONTENT_TOOLS.has(name)) {
+    chunks.push(writtenContent(name, args))
   }
 
   const hosts = new Set()
@@ -170,20 +172,14 @@ export function extractPaths(tool, args) {
   const push = (value) => {
     if (typeof value === "string" && value.trim()) paths.push(value.trim())
   }
-  switch (tool) {
+  switch (canonicalTool(tool)) {
     case "read":
-      push(args?.filePath)
-      break
     case "write":
-      push(args?.filePath)
-      break
     case "edit":
-      push(args?.filePath)
+    case "patch":
+      pathsOf(args).forEach(push)
       break
-    case "apply_patch":
-      push(args?.filePath)
-      break
-    case "bash":
+    case "shell":
       push(args?.workdir)
       break
     default:
@@ -287,15 +283,16 @@ export function fullText(tool, args) {
  * helper is used so the two agree.
  */
 export function writtenContent(tool, args) {
+  const name = canonicalTool(tool)
   if (!args || typeof args !== "object") return ""
-  if (tool === "write") return typeof args.content === "string" ? args.content : ""
-  if (tool === "edit") {
+  if (name === "write") return typeof args.content === "string" ? args.content : ""
+  if (name === "edit") {
     const parts = []
     if (typeof args.newString === "string") parts.push(args.newString)
     if (typeof args.oldString === "string") parts.push(args.oldString)
     return parts.join("\n")
   }
-  if (tool === "apply_patch") {
+  if (name === "patch") {
     const parts = []
     if (typeof args.patchText === "string") parts.push(args.patchText)
     if (typeof args.patch === "string") parts.push(args.patch)
@@ -316,17 +313,18 @@ export function writtenContent(tool, args) {
  */
 export function hasOutboundSurface(tool, args, directory, scope) {
   requireScope(scope)
-  if (LOCAL_ONLY_TOOLS.has(tool)) {
+  const name = canonicalTool(tool)
+  if (LOCAL_ONLY_TOOLS.has(name)) {
     // A file write can stage a payload that a later call executes, so the
     // content decides.
-    if (CONTENT_TOOLS.has(tool)) {
-      const content = writtenContent(tool, args)
+    if (CONTENT_TOOLS.has(name)) {
+      const content = writtenContent(name, args)
       return hasTransferPrimitive(content)
     }
     return false
   }
 
-  if (tool === "bash" || tool === "shell" || tool === "run") {
+  if (name === "shell") {
     const command = typeof args?.command === "string" ? args.command : ""
     if (hasTransferPrimitive(command)) return true
     if (runsLocalScript(command)) return true
@@ -336,7 +334,7 @@ export function hasOutboundSurface(tool, args, directory, scope) {
     return false
   }
 
-  if (tool === "webfetch") {
+  if (name === "webfetch") {
     if (args && Object.keys(args).some((key) => !["url", "format", "timeout"].includes(key))) return true
     // A GET can still carry data in the path or the query string.
     const url = typeof args?.url === "string" ? args.url : ""

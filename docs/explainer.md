@@ -55,6 +55,6 @@ The heuristics and judge can miss these, and can also flag legitimate work. No c
 - The judge request is **not redacted**. It can contain rendered arguments and, in some cases, staged file contents. Use an endpoint you trust.
 - With optional timeout fallback enabled, both the primary and fallback can receive the same unredacted state. Trust and protect both endpoints. See [configuration](configuration.md#optional-timeout-fallback).
 - The plugin cannot control arbitrary network activity from tools or child processes. Treat it as a guardrail, not a firewall or sandbox.
-- This release targets OpenCode v1. Version `1.19.4` is the tested host; v2 is not supported.
+- Version `1.19.4` is the tested OpenCode v1 host. OpenCode 2.x loads the plugin and registers its hooks, but its tool-call tests are not complete. A load failure is not visible to the guard, so [verify the plugin loaded](installation.md#verify-it-loaded).
 
 For setup and details, see the [installation guide](installation.md), [configuration guide](configuration.md), and [security and data handling guide](security.md). The [HTML explainer](explainer.html) gives the longer visual walkthrough.

@@ -1,6 +1,6 @@
 # ADR 0001: Support OpenCode v1 only
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0011](0011-opencode-v2-adapter.md)
 
 ## Context
 

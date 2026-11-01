@@ -20,9 +20,11 @@ import { sharedCache } from "./shared.js"
 import { requireScope } from "./scope.js"
 import { extractHosts, fullText, hasOutboundSurface, hasTransferPrimitive, renderState, runsLocalScript } from "./state.js"
 import { getWrite, recordWrite, referencedWrites, writesRevision, markUncertainPatch, hasUncertainPatch, refreshWrite, hasWrites, ambiguousPath, hasPendingMutation } from "./written.js"
+import { canonicalTool, listsTool, pathsOf } from "./tools.js"
 
 // Patch headers are line-oriented. Never interpret content lines as paths.
-function trackMutation(tool, args, directory, scope) {
+function trackMutation(name, args, directory, scope) {
+  const tool = canonicalTool(name)
   const knownDirectory = typeof directory === "string" && posix.isAbsolute(directory)
   const lookup = path => getWrite(path, directory, scope)
   const uncertainPath = path => {
@@ -30,16 +32,18 @@ function trackMutation(tool, args, directory, scope) {
     if (ambiguousPath(path, directory)) markUncertainPatch(scope)
   }
   if (tool === "write" || tool === "edit") {
-    const path = args?.filePath
-    if (typeof path !== "string" || !path) return
-    uncertainPath(path)
+    const paths = pathsOf(args)
+    if (!paths.length) return
     const content = writeContent(tool, args)
-    if (!ambiguousPath(path, directory) && (lookup(path) || hasTransferPrimitive(content))) {
-      recordWrite(path, null, directory, scope)
+    for (const path of paths) {
+      uncertainPath(path)
+      if (!ambiguousPath(path, directory) && (lookup(path) || hasTransferPrimitive(content))) {
+        recordWrite(path, null, directory, scope)
+      }
     }
     return
   }
-  if (tool !== "apply_patch") return
+  if (tool !== "patch") return
   const patch = typeof args?.patchText === "string" ? args.patchText : args?.patch
   if (typeof patch !== "string") { markUncertainPatch(scope); return }
   const lines = patch.split(/\r?\n/)
@@ -79,9 +83,10 @@ function trackMutation(tool, args, directory, scope) {
  * The text a write-like tool puts on disk.
  *
  * `write` uses `content`, `edit` uses `newString` (and `oldString`), and
- * `apply_patch` uses a patch text. All of them can carry a payload.
+ * `patch` (2.x) or `apply_patch` (1.x) uses a patch text. All of them can carry a payload.
  */
-export function writeContent(tool, args) {
+export function writeContent(name, args) {
+  const tool = canonicalTool(name)
   if (!args || typeof args !== "object") return ""
   if (tool === "write") return typeof args.content === "string" ? args.content : ""
   if (tool === "edit") {
@@ -90,7 +95,7 @@ export function writeContent(tool, args) {
     if (typeof args.oldString === "string") parts.push(args.oldString)
     return parts.join("\n")
   }
-  if (tool === "apply_patch") {
+  if (tool === "patch") {
     const parts = []
     if (typeof args.patchText === "string") parts.push(args.patchText)
     if (typeof args.patch === "string") parts.push(args.patch)
@@ -244,7 +249,8 @@ export function createGuard(config, deps = {}) {
    */
   async function evaluate(input) {
     const started = now()
-    const { tool, args } = input
+    const tool = canonicalTool(input.tool)
+    const { args } = input
     const hosts = extractHosts(tool, args)
 
     if (!config.enabled) {
@@ -260,7 +266,7 @@ export function createGuard(config, deps = {}) {
 
     // Deny is a security control and is checked before the skip list, which
     // is only a performance optimisation.
-    if (config.deniedTools.includes(tool)) {
+    if (listsTool(config.deniedTools, tool)) {
       return new GuardDecision({
         verdict: VERDICT.DENY,
         reason: `Tool "${tool}" is on the deny list.`,
@@ -274,7 +280,7 @@ export function createGuard(config, deps = {}) {
     // Invalidate evidence even if policy later skips this tool or the tool fails.
     trackMutation(tool, args, deps.directory, scope)
 
-    if (config.skipTools.includes(tool)) {
+    if (listsTool(config.skipTools, tool)) {
       return new GuardDecision({
         verdict: VERDICT.ALLOW,
         reason: `Tool "${tool}" is on the skip list.`,
@@ -285,7 +291,7 @@ export function createGuard(config, deps = {}) {
       })
     }
 
-    if (config.allowedTools.includes(tool)) {
+    if (listsTool(config.allowedTools, tool)) {
       return new GuardDecision({
         verdict: VERDICT.ALLOW,
         reason: `Tool "${tool}" is on the allow list.`,
@@ -296,7 +302,7 @@ export function createGuard(config, deps = {}) {
       })
     }
 
-    const isShell = tool === "bash" || tool === "shell" || tool === "run"
+    const isShell = tool === "shell"
     const command = typeof args?.command === "string" ? args.command : ""
     const base = typeof deps.directory === "string" && posix.isAbsolute(deps.directory) ? deps.directory : undefined
     const workdir = typeof args?.workdir === "string" && args.workdir ? args.workdir : undefined
@@ -345,7 +351,8 @@ export function createGuard(config, deps = {}) {
     let state
     try {
       state = renderState({
-      tool,
+      // The host's own name, so the judge sees the same text as before canonical ids.
+      tool: input.tool,
       args,
       template: config.stateTemplate,
       maxStateChars: config.maxStateChars,

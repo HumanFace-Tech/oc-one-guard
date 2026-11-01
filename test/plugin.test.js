@@ -1,6 +1,7 @@
 import test, { beforeEach } from "node:test"
 import assert from "node:assert/strict"
-import { server, id, default as plugin } from "../index.js"
+import { readFileSync } from "node:fs"
+import { server, setup, id, default as plugin } from "../index.js"
 import { hasPendingMutation } from "../src/written.js"
 import { sharedCache } from "../src/shared.js"
 import { createScope } from "../src/scope.js"
@@ -13,7 +14,7 @@ const output = { args: { filePath: "ordinary.txt", content: "local text" } }
 test("package exports plugin identity and hook factory", async t => {
   const calls = stubFetch(t)
   assert.equal(id, "oc-one-guard")
-  assert.deepEqual(plugin, { id, server })
+  assert.deepEqual(plugin, { id, setup, server })
   const hooks = await server({ client: {}, directory: fixture(t) }, config())
   assert.deepEqual(Object.keys(hooks).sort(), ["chat.message", "event", "tool.execute.after", "tool.execute.before"])
   await hooks["tool.execute.before"]({ tool: "read" }, { args: { filePath: "file.txt" } })
@@ -189,15 +190,26 @@ test("blocked mutation releases its token even when UI callbacks throw", async t
   assert.equal(calls.length, 1)
 })
 
-test("uncorrelatable mutations stay pending", async t => {
+test("uncorrelatable mutation is refused and leaves no pending state that denies scripts", async t => {
   const calls = stubFetch(t)
   const directory = fixture(t), scope = createScope({ directory })
   const hooks = await server({ client: {}, directory }, config())
-  await hooks["tool.execute.before"]({ tool: "write" }, output)
-  await hooks["tool.execute.after"](input)
-  assert.equal(hasPendingMutation(scope), true)
-  await assert.rejects(hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } }), /content is unknown/)
+  await assert.rejects(hooks["tool.execute.before"]({ tool: "write" }, output), /cannot be tracked/)
+  assert.equal(hasPendingMutation(scope), false)
   assert.equal(calls.length, 0)
+  await hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } })
+  assert.equal(calls.length, 1)
+})
+
+test("uncorrelatable mutation refusal is audited and does not reach the judge", async t => {
+  const calls = stubFetch(t)
+  const directory = fixture(t)
+  const hooks = await server({ client: {}, directory }, config({ auditFile: `${directory}/audit.jsonl` }))
+  await assert.rejects(hooks["tool.execute.before"]({ tool: "apply_patch" }, { args: { patchText: "x" } }), /cannot be tracked/)
+  assert.equal(calls.length, 0)
+  const entry = JSON.parse(readFileSync(`${directory}/audit.jsonl`, "utf8").trim())
+  assert.equal(entry.mode, "uncorrelated-block")
+  assert.equal(entry.verdict, "deny")
 })
 
 test("emergency blocks and cleans mutation before deferred root-first cancellation", async t => {
