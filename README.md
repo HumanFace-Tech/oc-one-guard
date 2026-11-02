@@ -18,7 +18,8 @@ The default `noul` question asks whether the call violates exfiltration policy. 
 
 ## Quick Heads-Up
 
-- OpenCode 1.19.4 (`server` entry) is the tested v1 host. OpenCode 2.2.x (`setup` entry) loads the plugin and registers its hooks; end-to-end tool-call tests for v2 are not complete yet. Unsupported before 1.19.4.
+- Versions: `0.1.x` is the OpenCode 1.x line (on the `opencode-1.x` branch); `0.2.x` is the OpenCode 2.x line (`main`). `0.2.x` also still loads on 1.19.4.
+- OpenCode 2.2.x (`setup` entry) was tested end to end on 2.2.5 with a scripted model and judge: allowed and blocked calls, judge outage, staged scripts and the load check. Subagent and MCP calls are not tested yet. OpenCode 1.19.4 (`server` entry) is the tested v1 host. Unsupported before 1.19.4.
 - OpenCode 2.x does not log decisions or show toasts. A load failure is logged as `failed to load plugin`, so [check it loaded](docs/installation.md#verify-it-loaded).
 - Setup is opt-in. Cloning this repo does not register the plugin or change OpenCode configuration.
 - The judge receives rendered tool arguments and, in some cases, staged file contents. Pick an endpoint you trust.
