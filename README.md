@@ -34,7 +34,7 @@ Published on npm as [`oc-one-guard`](https://www.npmjs.com/package/oc-one-guard)
 {
   "plugin": [
     [
-      "oc-one-guard@0.2.0",
+      "oc-one-guard@0.3.0",
       {
         "endpoint": "http://127.0.0.1:8081/v1/systemone",
         "model": "h2o-lightning-4b"

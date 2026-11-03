@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - **Breaking:** the judge decides every tool call. Removed the tool deny, skip and allow lists, the blocked-host list, the no-outbound-surface prefilter, the "content is unknown" and ambiguous-path denies, and the refusal of write calls without a call ID. The keys `deniedTools`, `skipTools`, `allowedTools`, `allowedHosts`, `blockedHosts` and `prefilter` are now ignored.
 - Files the agent writes are still tracked, but only as context shown to the judge; they never block a call.
