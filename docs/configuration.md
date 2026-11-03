@@ -33,12 +33,6 @@ The sample in [`config.example.json`](../config.example.json) chooses a differen
 | `redactArguments` | `true` | Best-effort redaction of recognized secret patterns in audit state. The blocked command preview is redacted regardless. |
 | `cacheEnabled` | `true` | Cache classified judge decisions and coalesce concurrent identical requests. Escalations, emergency stops, failures and unclassified answers are not retained in the TTL cache. |
 | `cacheTtlMs` | `30000` | Cache lifetime in milliseconds; normalized to a non-negative integer. |
-| `prefilter` | `true` | Allow calls detected as having no outbound surface without asking the judge. This check is heuristic. |
-| `skipTools` | `[]` | Tool names allowed without judge review, after `deniedTools`. Blocked-host scanning still runs first. |
-| `deniedTools` | `[]` | Tool names always denied by the guard, before `skipTools`. |
-| `allowedTools` | `[]` | Tool names allowed without judge review, after `skipTools`. Blocked-host scanning still runs first. |
-| `allowedHosts` | `[]` | Reserved setting; currently does not bypass judge evaluation. |
-| `blockedHosts` | `[]` | URL hosts denied before tool rules or judge review. Matching is case-insensitive and includes exact hosts and subdomains on dot boundaries. `*.example.com` matches subdomains. |
 | `maxStateChars` | `8000` | Maximum rendered state length sent to the judge; normalized to a positive integer. |
 | `maxArgChars` | `2000` | Maximum length of each string argument during rendering and staged-content inclusion; normalized to a positive integer. |
 | `stateTemplate` | `proposed agent tool call…` | Template requiring `{arguments}`. Also substitutes `{tool}`, `{hosts}`, `{paths}`, and `{references}`. Extracted facts are appended. |

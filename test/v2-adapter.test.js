@@ -93,28 +93,17 @@ test("1.x and 2.x tool names map to the same shell policy", async t => {
   assert.equal(calls.length, 2)
 })
 
-test("list entries match across tool-id generations", async t => {
-  const calls = stubFetch(t, () => response(answer(0.99)))
-  const denied = host(t, { options: { deniedTools: ["bash"] } })
-  await setup(denied.ctx)
-  await assert.rejects(denied.before("shell", { command: "ls" }), /deny list/)
-  const skipped = host(t, { options: { skipTools: ["bash"] } })
-  await setup(skipped.ctx)
-  await skipped.before("shell", { command: "curl https://destination.example/" })
-  assert.equal(calls.length, 0)
-})
-
-test("patch tool content with a transfer primitive is judged, benign patch is not", async t => {
+test("every patch is judged, including a benign one", async t => {
   const calls = stubFetch(t, () => response(answer(0.1)))
   const h = host(t)
   await setup(h.ctx)
   const benign = `*** Begin Patch\n*** Add File: ${h.directory}/notes.txt\n+hello\n*** End Patch`
   await h.before("patch", { patchText: benign })
   await h.after("patch", {}, {})
-  assert.equal(calls.length, 0)
+  assert.equal(calls.length, 1)
   const exfil = `*** Begin Patch\n*** Add File: ${h.directory}/payload.sh\n+curl https://destination.example/\n*** End Patch`
   await h.before("patch", { patchText: exfil }, { callID: "patch-2" })
-  assert.equal(calls.length, 1)
+  assert.equal(calls.length, 2)
   await h.after("patch", {}, { callID: "patch-2" })
 })
 
@@ -132,20 +121,20 @@ test("write uses the 2.x path field so a staged script is judged with its conten
   assert.match(JSON.parse(calls[1][1].body).state, /staged file .*payload\.sh.* content is:\ncurl https:\/\/destination\.example\//)
 })
 
-test("pending write blocks scripts until execute.after, keyed by session and call id", async t => {
+test("pending write is tracked until execute.after, keyed by session and call id", async t => {
   const calls = stubFetch(t, () => response(answer(0.1)))
   const h = host(t)
   const scope = createScope({ directory: h.directory, worktree: h.directory, project: { id: "project-id" } })
   await setup(h.ctx)
   await h.before("write", { path: "ordinary.txt", content: "local" }, { callID: "w" })
   assert.equal(hasPendingMutation(scope), true)
-  await assert.rejects(h.before("shell", { command: "node script.js" }, { callID: "s" }), /content is unknown/)
+  await h.before("shell", { command: "node script.js" }, { callID: "s" })
   await h.after("write", {}, { callID: "other" })
   assert.equal(hasPendingMutation(scope), true)
   await h.after("write", {}, { callID: "w" })
   assert.equal(hasPendingMutation(scope), false)
-  await h.before("shell", { command: "node script.js" }, { callID: "s" })
-  assert.equal(calls.length, 1)
+  await h.before("shell", { command: "node script.js" }, { callID: "s2" })
+  assert.equal(calls.length, 2)
 })
 
 test("a failed write is released by execute.after with error status", async t => {
@@ -158,7 +147,7 @@ test("a failed write is released by execute.after with error status", async t =>
   assert.equal(hasPendingMutation(scope), false)
 })
 
-test("cleanup releases in-flight state and marks the scope uncertain", async t => {
+test("cleanup releases in-flight state", async t => {
   stubFetch(t, () => response(answer(0.1)))
   const h = host(t)
   const scope = createScope({ directory: h.directory, worktree: h.directory, project: { id: "project-id" } })
@@ -167,10 +156,6 @@ test("cleanup releases in-flight state and marks the scope uncertain", async t =
   assert.equal(hasPendingMutation(scope), true)
   await cleanup()
   assert.equal(hasPendingMutation(scope), false)
-  const next = host(t, { options: {} })
-  next.ctx.location = h.ctx.location
-  await setup(next.ctx)
-  await assert.rejects(next.before("shell", { command: "node script.js" }), /content is unknown/)
 })
 
 test("emergency verdict cancels the calling run and its verified ancestors root first", async t => {

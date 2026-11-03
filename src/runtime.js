@@ -7,7 +7,6 @@
 
 import { createAuditLogger } from "./audit.js"
 import { createGuard, VERDICT } from "./guard.js"
-import { scanBlockedHosts } from "./blocked-hosts.js"
 import { redactText } from "./redact.js"
 import { beginMutation, endMutation, markUncertainPatch } from "./written.js"
 import { createStopController } from "./stop.js"
@@ -142,40 +141,8 @@ export function createGuardRuntime(config, { client, directory, scope }) {
         throw new Error("[oc-one-guard] Blocked tool call while conversation cancellation is pending.")
       }
 
-      const scan = config.blockedHosts.length ? scanBlockedHosts(args, config.blockedHosts) : {}
-      if (scan.host || scan.limited) {
-        const decision = {
-          verdict: VERDICT.DENY,
-          reason: scan.host ? `Destination ${scan.host} is on the blocked-host list.` : "Blocked-host scan could not inspect all arguments (scan limit or inaccessible value).",
-          tool,
-          hosts: scan.host ? [scan.host] : [],
-          probability: undefined,
-          durationMs: 0,
-          mode: "host-block",
-          state: undefined,
-        }
-        audit(decision, {})
-        throw new Error(blockedMessage(decision, tool, args))
-      }
-
       const mutation = config.enabled && isMutationTool(tool)
       const key = typeof sessionID === "string" && typeof callID === "string" ? `${sessionID}\0${callID}` : undefined
-      // A token without a key can never be released, so it would deny later
-      // script runs until restart. Refuse the call instead.
-      if (mutation && !key) {
-        const decision = {
-          verdict: VERDICT.DENY,
-          reason: "The call has no session or call identifier, so its pending state cannot be tracked.",
-          tool,
-          hosts: [],
-          probability: undefined,
-          durationMs: 0,
-          mode: "uncorrelated-block",
-          state: undefined,
-        }
-        audit(decision, {})
-        throw new Error(blockedMessage(decision, tool, args))
-      }
       const token = mutation ? beginMutation(scope) : undefined
       if (token && key) {
         const entries = pending.get(key) ?? []

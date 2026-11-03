@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** the judge decides every tool call. Removed the tool deny, skip and allow lists, the blocked-host list, the no-outbound-surface prefilter, the "content is unknown" and ambiguous-path denies, and the refusal of write calls without a call ID. The keys `deniedTools`, `skipTools`, `allowedTools`, `allowedHosts`, `blockedHosts` and `prefilter` are now ignored.
+- Files the agent writes are still tracked, but only as context shown to the judge; they never block a call.
+- A call whose state cannot be rendered follows `failMode` instead of a separate hard deny.
+
 ## 0.2.0
 
 - Adds an OpenCode 2.x entry (`setup`) beside the OpenCode 1.x entry (`server`). The default export is `{ id, setup, server }`. Both entries use one shared runtime (`src/runtime.js`). See [ADR 0011](docs/adr/0011-opencode-v2-adapter.md).

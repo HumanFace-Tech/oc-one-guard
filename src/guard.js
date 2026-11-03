@@ -2,10 +2,9 @@
  * The guard engine: decide, cache, audit.
  *
  * Decision order:
- *   1. Tool allow/deny lists and host lists decide without consulting the judge.
- *   2. The judge is asked for a verdict.
- *   3. The verdict is compared against `denyThreshold` and `escalateThreshold`.
- *   4. Failures fall back to `failMode`; unclassifiable verdicts to `unknownMode`.
+ *   1. The judge is asked about every call; no code rule decides for it.
+ *   2. The verdict is compared against `denyThreshold` and `escalateThreshold`.
+ *   3. Failures fall back to `failMode`; unclassifiable verdicts to `unknownMode`.
  *
  * The cache is keyed on the *full* call as well as the rendered state. The
  * rendered state is truncated, so two different commands could otherwise
@@ -18,9 +17,9 @@ import { posix } from "node:path"
 import { denyProbability, findDenyOption, JudgeError, requestDecision } from "./judge.js"
 import { sharedCache } from "./shared.js"
 import { requireScope } from "./scope.js"
-import { extractHosts, fullText, hasOutboundSurface, hasTransferPrimitive, renderState, runsLocalScript } from "./state.js"
-import { getWrite, recordWrite, referencedWrites, writesRevision, markUncertainPatch, hasUncertainPatch, refreshWrite, hasWrites, ambiguousPath, hasPendingMutation } from "./written.js"
-import { canonicalTool, listsTool, pathsOf } from "./tools.js"
+import { extractHosts, fullText, hasTransferPrimitive, renderState } from "./state.js"
+import { getWrite, recordWrite, referencedWrites, markUncertainPatch, refreshWrite, ambiguousPath } from "./written.js"
+import { canonicalTool, pathsOf } from "./tools.js"
 
 // Patch headers are line-oriented. Never interpret content lines as paths.
 function trackMutation(name, args, directory, scope) {
@@ -264,89 +263,20 @@ export function createGuard(config, deps = {}) {
       })
     }
 
-    // Deny is a security control and is checked before the skip list, which
-    // is only a performance optimisation.
-    if (listsTool(config.deniedTools, tool)) {
-      return new GuardDecision({
-        verdict: VERDICT.DENY,
-        reason: `Tool "${tool}" is on the deny list.`,
-        tool,
-        hosts,
-        durationMs: 0,
-        mode: "tool-deny",
-      })
-    }
-
-    // Invalidate evidence even if policy later skips this tool or the tool fails.
+    // Writes are tracked only as context for the judge; nothing here decides.
     trackMutation(tool, args, deps.directory, scope)
-
-    if (listsTool(config.skipTools, tool)) {
-      return new GuardDecision({
-        verdict: VERDICT.ALLOW,
-        reason: `Tool "${tool}" is on the skip list.`,
-        tool,
-        hosts,
-        durationMs: 0,
-        mode: "skip",
-      })
-    }
-
-    if (listsTool(config.allowedTools, tool)) {
-      return new GuardDecision({
-        verdict: VERDICT.ALLOW,
-        reason: `Tool "${tool}" is on the allow list.`,
-        tool,
-        hosts,
-        durationMs: 0,
-        mode: "tool-allow",
-      })
-    }
 
     const isShell = tool === "shell"
     const command = typeof args?.command === "string" ? args.command : ""
     const base = typeof deps.directory === "string" && posix.isAbsolute(deps.directory) ? deps.directory : undefined
     const workdir = typeof args?.workdir === "string" && args.workdir ? args.workdir : undefined
     const directory = workdir ? (posix.isAbsolute(workdir) ? posix.normalize(workdir) : base ? posix.resolve(base, workdir) : undefined) : base
-    const words = command.match(/'[^']*'|"[^"]*"|[^\s;&|()<>]+/g) ?? []
-    const ambiguous = ambiguousPath(workdir, base) || ambiguousPath(base) || words.some(word => {
-      const value = word.replace(/^(['"])(.*)\1$/, "$2")
-      return value.includes("/") && ambiguousPath(value, directory)
-    })
-    if (isShell && ambiguous && (hasWrites(scope) || hasUncertainPatch(scope))) {
-      const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Ambiguous filesystem path prevents reliable staged-file evidence.", tool, hosts, durationMs: now() - started, mode: "staged-unknown" })
-      writeAudit(decision, {})
-      return decision
-    }
     const hits = isShell ? referencedWrites(command, directory, scope) : []
     const snapshots = new Map(hits.map(hit => {
       const entry = getWrite(hit.path, undefined, scope)
       const content = entry.content === null ? refreshWrite(hit.path, scope) : entry.content
       return [hit.path, { ...entry, content: content ?? null }]
     }))
-    const unresolvedScript = runsLocalScript(command) && hasWrites(scope) &&
-      ((!directory && !command.match(/(?:^|\s)\//)) || /(?:^|[;&|]\s*)\s*cd(?:\s|$)|[$`*?\[\]{}\\]/.test(command))
-    const unknownStaged = isShell && (hits.some(hit => snapshots.get(hit.path)?.content === null) || (hasPendingMutation(scope) && (hits.length > 0 || runsLocalScript(command))) || (hasUncertainPatch(scope) && runsLocalScript(command)) || unresolvedScript)
-    if (unknownStaged) {
-      const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Tracked file content is unknown after a modification.", tool, hosts, durationMs: now() - started, mode: "staged-unknown" })
-      writeAudit(decision, {})
-      return decision
-    }
-    const revision = writesRevision(scope)
-    const snapshotsValid = () => (!(hits.length || runsLocalScript(command)) || !hasPendingMutation(scope)) && [...snapshots].every(([path, snapshot]) => {
-      const entry = getWrite(path, undefined, scope)
-      return entry && !ambiguousPath(path) && (entry.content === null ? refreshWrite(path, scope) : entry.content) === snapshot.content
-    })
-
-    if (config.prefilter && !hasOutboundSurface(tool, args, directory, scope)) {
-      return new GuardDecision({
-        verdict: VERDICT.ALLOW,
-        reason: `Tool "${tool}" has no outbound surface.`,
-        tool,
-        hosts,
-        durationMs: 0,
-        mode: "prefilter",
-      })
-    }
 
     let state
     try {
@@ -362,7 +292,8 @@ export function createGuard(config, deps = {}) {
       scope,
       })
     } catch {
-      const decision = new GuardDecision({ verdict: VERDICT.DENY, reason: "Security facts exceed the state limit or could not be rendered.", tool, hosts, durationMs: now() - started, mode: "state-block" })
+      const blocked = config.failMode === "block"
+      const decision = new GuardDecision({ verdict: blocked ? VERDICT.DENY : VERDICT.ALLOW, reason: `Call state could not be rendered for the judge. failMode="${config.failMode}".`, tool, hosts, durationMs: now() - started, mode: blocked ? "fail-block" : "fail-allow" })
       writeAudit(decision, {})
       return decision
     }
@@ -372,7 +303,6 @@ export function createGuard(config, deps = {}) {
     const cached = cacheGet(key)
     if (cached?.pending) {
       const decision = await cached.pending
-      if (isShell && (revision !== writesRevision(scope) || !snapshotsValid())) return evaluate(input)
       return new GuardDecision({ ...decision, durationMs: now() - started, mode: `${decision.mode}:coalesced` })
     }
     if (cached?.value) {
@@ -398,10 +328,6 @@ export function createGuard(config, deps = {}) {
         cache.delete(key)
       }
       throw error
-    }
-    if (isShell && (revision !== writesRevision(scope) || !snapshotsValid())) {
-      if (config.cacheEnabled && cache.get(key)?.pending === pending) cache.delete(key)
-      return evaluate(input)
     }
     if (decision.mode === "judge" && decision.verdict !== VERDICT.ESCALATE && !decision.stop) cacheSet(key, { ...decision })
     else if (config.cacheEnabled && cache.get(key)?.pending === pending) cache.delete(key)

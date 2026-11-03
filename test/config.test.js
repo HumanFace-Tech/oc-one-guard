@@ -37,9 +37,8 @@ for (const field of ["denyThreshold", "escalateThreshold"]) {
   }
 }
 
-test("threshold ordering and conflicting tool policy are rejected", () => {
+test("threshold ordering is enforced", () => {
   assert.throws(() => normalizeConfig({ denyThreshold: 0.2 }), /must not be greater/)
-  assert.throws(() => normalizeConfig({ deniedTools: ["bash"], skipTools: ["bash"] }), /both/)
   assert.equal(normalizeConfig({ denyThreshold: "0.8" }).denyThreshold, 0.8)
 })
 

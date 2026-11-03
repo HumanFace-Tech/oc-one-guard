@@ -202,13 +202,6 @@ export function normalizeConfig(raw) {
     }
   }
 
-  const denied = new Set(merged.deniedTools ?? [])
-  for (const tool of merged.skipTools ?? []) {
-    if (denied.has(tool)) {
-      errors.push(`tool "${tool}" is on both the deny list and the skip list`)
-    }
-  }
-
   if (errors.length) {
     throw new Error(`[oc-one-guard] Invalid configuration: ${errors.join("; ")}`)
   }
@@ -221,11 +214,6 @@ export function normalizeConfig(raw) {
   merged.cacheTtlMs = Math.max(0, Math.floor(Number(merged.cacheTtlMs) || 0))
   merged.auditGenerations = Math.max(1, Math.floor(Number(merged.auditGenerations) || DEFAULTS.auditGenerations))
 
-  if (!Array.isArray(merged.allowedTools)) merged.allowedTools = []
-  if (!Array.isArray(merged.deniedTools)) merged.deniedTools = []
-  if (!Array.isArray(merged.skipTools)) merged.skipTools = []
-  if (!Array.isArray(merged.allowedHosts)) merged.allowedHosts = []
-  if (!Array.isArray(merged.blockedHosts)) merged.blockedHosts = []
   if (!Array.isArray(merged.questions)) merged.questions = []
 
   return merged

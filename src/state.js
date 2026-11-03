@@ -23,29 +23,6 @@ import { canonicalTool, pathsOf } from "./tools.js"
 const URL_PATTERN = /\b(?:https?|ftps?|sftp|scp|rsync|ssh|git):\/\/[^\s"'`<>|;&]+/gi
 
 /**
- * Tools that cannot, on their own, move data off the machine.
- *
- * These are the only tools that skip the judge without further checks.
- * Everything else — shell, webfetch, MCP tools, any tool added in a future
- * OpenCode release — is judged.
- */
-const LOCAL_ONLY_TOOLS = new Set([
-  "read",
-  "write",
-  "edit",
-  "apply_patch",
-  "glob",
-  "grep",
-  "list",
-  "todowrite",
-  "todoread",
-  "patch",
-  "question",
-  "plan_exit",
-  "invalid",
-])
-
-/**
  * Tools whose arguments can contain a payload bound for a remote host.
  *
  * `write` and `edit` are included because a model can stage a payload in a
@@ -299,55 +276,6 @@ export function writtenContent(tool, args) {
     return parts.join("\n")
   }
   return ""
-}
-
-/**
- * Decide whether a tool call has an outbound surface worth judging.
- *
- * The rule is an allowlist of known-local tools. Anything else — including
- * MCP tools, `webfetch`, and any tool added in a future OpenCode release —
- * is judged.
- *
- * A shell command is judged when it uses a network primitive, runs a file
- * the agent has written, or mentions a written file at all.
- */
-export function hasOutboundSurface(tool, args, directory, scope) {
-  requireScope(scope)
-  const name = canonicalTool(tool)
-  if (LOCAL_ONLY_TOOLS.has(name)) {
-    // A file write can stage a payload that a later call executes, so the
-    // content decides.
-    if (CONTENT_TOOLS.has(name)) {
-      const content = writtenContent(name, args)
-      return hasTransferPrimitive(content)
-    }
-    return false
-  }
-
-  if (name === "shell") {
-    const command = typeof args?.command === "string" ? args.command : ""
-    if (hasTransferPrimitive(command)) return true
-    if (runsLocalScript(command)) return true
-    // The command mentions a file the agent wrote earlier. It may now hold
-    // a payload, so it is judged.
-    if (referencedWrites(command, directory, scope).length) return true
-    return false
-  }
-
-  if (name === "webfetch") {
-    if (args && Object.keys(args).some((key) => !["url", "format", "timeout"].includes(key))) return true
-    // A GET can still carry data in the path or the query string.
-    const url = typeof args?.url === "string" ? args.url : ""
-    if (!url) return false
-    try {
-      const parsed = new URL(url)
-      return parsed.search.length > 1 || parsed.pathname.length > 1
-    } catch {
-      return true
-    }
-  }
-
-  return true
 }
 
 /**

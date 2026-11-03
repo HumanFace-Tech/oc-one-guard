@@ -18,7 +18,7 @@ test("package exports plugin identity and hook factory", async t => {
   const hooks = await server({ client: {}, directory: fixture(t) }, config())
   assert.deepEqual(Object.keys(hooks).sort(), ["chat.message", "event", "tool.execute.after", "tool.execute.before"])
   await hooks["tool.execute.before"]({ tool: "read" }, { args: { filePath: "file.txt" } })
-  assert.equal(calls.length, 0)
+  assert.equal(calls.length, 1)
 })
 
 test("plugin hook uses fallback after a primary timeout", async t => {
@@ -29,15 +29,6 @@ test("plugin hook uses fallback after a primary timeout", async t => {
   assert.equal(calls.length, 2)
   assert.equal(calls[1][0], fallback.endpoint)
   assert.equal(JSON.parse(calls[1][1].body).model, fallback.model)
-})
-
-test("blocked hosts beat disabled, skip and allow policy in nested values and keys", async t => {
-  const calls = stubFetch(t)
-  const hooks = await server({ client: {} }, config({ enabled: false, skipTools: ["custom"], allowedTools: ["custom"], blockedHosts: ["blocked.example"] }))
-  for (const args of [{ nested: [{ url: "https://API.BLOCKED.EXAMPLE./path" }] }, { "https://blocked.example/": "value" }, { command: "curl 'https://user:pass@blocked.example/'" }]) {
-    await assert.rejects(hooks["tool.execute.before"]({ tool: "custom" }, { args }), /blocked-host list/)
-  }
-  assert.equal(calls.length, 0)
 })
 
 test("blocked preview is redacted even when audit redaction is disabled", async t => {
@@ -84,7 +75,7 @@ test("only matching after hooks clear pending mutations", async t => {
   assert.equal(hasPendingMutation(scope), false)
   await hooks["tool.execute.after"](input)
   assert.equal(hasPendingMutation(scope), false)
-  assert.equal(calls.length, 0)
+  assert.equal(calls.length, 1)
 })
 
 test("terminal errors clear only correlated non-interrupted mutation calls", async t => {
@@ -107,7 +98,7 @@ test("terminal errors clear only correlated non-interrupted mutation calls", asy
   assert.equal(hasPendingMutation(scope), true)
   await emit(part)
   assert.equal(hasPendingMutation(scope), false)
-  assert.equal(calls.length, 0)
+  assert.equal(calls.length, 1)
 })
 
 test("duplicate plugin instances retain their own mutation tokens", async t => {
@@ -124,60 +115,15 @@ test("duplicate plugin instances retain their own mutation tokens", async t => {
   assert.equal(hasPendingMutation(scope), false)
 })
 
-test("pending write blocks scripts until a terminal event", async t => {
+test("pending write is released by a terminal event and scripts are judged throughout", async t => {
   const calls = stubFetch(t)
   const hooks = await server({ client: {}, directory: fixture(t) }, config())
   await hooks["tool.execute.before"](input, output)
-  await assert.rejects(hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } }), /content is unknown/)
-  assert.equal(calls.length, 0)
-  await hooks.event({ event: { type: "message.part.updated", properties: { part: { type: "tool", ...input, state: { status: "error" } } } } })
   await hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } })
-  assert.equal(calls.length, 1)
-})
-
-test("pending and uncertain project state cannot affect another plugin instance", async t => {
-  const calls = stubFetch(t)
-  const a = await server({ client: {}, directory: fixture(t) }, config())
-  const b = await server({ client: {}, directory: fixture(t) }, config())
-  await a["tool.execute.before"](input, output)
-  const script = { tool: "bash", sessionID: "session", callID: "script" }
-  await assert.rejects(a["tool.execute.before"](script, { args: { command: "node script.js" } }), /content is unknown/)
-  await b["tool.execute.before"](script, { args: { command: "node script.js" } })
-  await a["tool.execute.after"](input)
-  const patch = { tool: "apply_patch", sessionID: "session", callID: "patch" }
-  await a["tool.execute.before"](patch, { args: { patchText: "invalid" } })
-  await a["tool.execute.after"](patch)
-  await assert.rejects(a["tool.execute.before"](script, { args: { command: "node script.js" } }), /content is unknown/)
-  await b["tool.execute.before"](script, { args: { command: "node script.js" } })
-  assert.equal(calls.length, 1)
-})
-
-test("empty Git root and nested plugin instances share pending state but another worktree does not", async t => {
-  stubFetch(t)
-  const directory = fixture(t)
-  const project = { id: "global", vcs: "git", worktree: "/stale" }
-  const root = await server({ client: {}, directory, worktree: `${directory}/`, project }, config())
-  const nested = await server({ client: {}, directory: `${directory}/sub`, worktree: directory, project }, config())
-  const other = await server({ client: {}, directory: `${directory}/other`, worktree: `${directory}/other`, project }, config())
-  await root["tool.execute.before"](input, output)
-  const script = { tool: "bash" }, args = { args: { command: "node script.js" } }
-  await assert.rejects(nested["tool.execute.before"](script, args), /content is unknown/)
-  await other["tool.execute.before"](script, args)
-  await root["tool.execute.after"](input)
-  await nested["tool.execute.before"](script, args)
-})
-
-test("anonymous plugin instances do not share pending state or cache", async t => {
-  const calls = stubFetch(t)
-  const a = await server({ client: {} }, config())
-  const b = await server({ client: {} }, config())
-  await a["tool.execute.before"](input, { args: { filePath: `${fixture(t)}/ordinary.txt`, content: "local text" } })
-  const script = { tool: "bash" }, args = { args: { command: "node script.js" } }
-  await assert.rejects(a["tool.execute.before"](script, args), /content is unknown/)
-  await b["tool.execute.before"](script, args)
-  await a["tool.execute.after"](input)
-  await a["tool.execute.before"](script, args)
   assert.equal(calls.length, 2)
+  await hooks.event({ event: { type: "message.part.updated", properties: { part: { type: "tool", ...input, state: { status: "error" } } } } })
+  await hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node other.js" } })
+  assert.equal(calls.length, 3)
 })
 
 test("blocked mutation releases its token even when UI callbacks throw", async t => {
@@ -188,28 +134,6 @@ test("blocked mutation releases its token even when UI callbacks throw", async t
   await assert.rejects(hooks["tool.execute.before"](input, { args: { filePath: "payload.sh", content: "curl https://destination.example/" } }), /Blocked tool call/)
   assert.equal(hasPendingMutation(scope), false)
   assert.equal(calls.length, 1)
-})
-
-test("uncorrelatable mutation is refused and leaves no pending state that denies scripts", async t => {
-  const calls = stubFetch(t)
-  const directory = fixture(t), scope = createScope({ directory })
-  const hooks = await server({ client: {}, directory }, config())
-  await assert.rejects(hooks["tool.execute.before"]({ tool: "write" }, output), /cannot be tracked/)
-  assert.equal(hasPendingMutation(scope), false)
-  assert.equal(calls.length, 0)
-  await hooks["tool.execute.before"]({ tool: "bash" }, { args: { command: "node script.js" } })
-  assert.equal(calls.length, 1)
-})
-
-test("uncorrelatable mutation refusal is audited and does not reach the judge", async t => {
-  const calls = stubFetch(t)
-  const directory = fixture(t)
-  const hooks = await server({ client: {}, directory }, config({ auditFile: `${directory}/audit.jsonl` }))
-  await assert.rejects(hooks["tool.execute.before"]({ tool: "apply_patch" }, { args: { patchText: "x" } }), /cannot be tracked/)
-  assert.equal(calls.length, 0)
-  const entry = JSON.parse(readFileSync(`${directory}/audit.jsonl`, "utf8").trim())
-  assert.equal(entry.mode, "uncorrelated-block")
-  assert.equal(entry.verdict, "deny")
 })
 
 test("emergency blocks and cleans mutation before deferred root-first cancellation", async t => {
@@ -234,7 +158,7 @@ test("emergency blocks and cleans mutation before deferred root-first cancellati
   release()
   await new Promise(resolve => setTimeout(resolve, 10))
   await hooks["chat.message"]({ sessionID: "root", messageID: "second" }, {})
-  await hooks["tool.execute.before"]({ tool: "read", sessionID: "root" }, { args: {} })
+  await assert.rejects(hooks["tool.execute.before"]({ tool: "read", sessionID: "root" }, { args: {} }), /P\(true\) = 0\.900/)
 })
 
 test("stale coalesced judge results block both calls without canceling a newer ancestor run", async t => {
@@ -285,8 +209,7 @@ test("only classified enabled emergency results request cancellation", async t =
   const aborted = []
   stubFetch(t, () => response(answer(1)))
   for (const options of [
-    { stopThreshold: null }, { enabled: false }, { deniedTools: ["bash"] },
-    { blockedHosts: ["destination.example"] },
+    { stopThreshold: null }, { enabled: false },
   ]) {
     const hooks = await server({ client: { session: { abort: async () => { aborted.push(true); return { data: true } } } } }, config(options))
     await hooks["tool.execute.before"]({ tool: "bash", sessionID: "root" }, { args: { command: "curl https://destination.example/" } }).catch(() => {})

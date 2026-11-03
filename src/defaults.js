@@ -47,12 +47,6 @@
  * @property {boolean} redactArguments    Strip secret-looking values before they leave the machine.
  * @property {boolean} cacheEnabled       Cache identical verdicts for a short window.
  * @property {number} cacheTtlMs
- * @property {boolean} prefilter          Skip the judge for calls with no outbound surface.
- * @property {string[]} skipTools         Tool names never inspected.
- * @property {string[]} deniedTools       Tool names always blocked.
- * @property {string[]} allowedTools      Tool names always allowed, judge not consulted.
- * @property {string[]} allowedHosts      Hosts treated as trusted destinations.
- * @property {string[]} blockedHosts      Hosts always treated as exfiltration destinations.
  * @property {number} maxStateChars      Cap on the rendered state sent to the judge.
  * @property {number} maxArgChars        Per-argument truncation before rendering.
  * @property {QuestionConfig[]} questions  Judge questions.
@@ -84,12 +78,6 @@ export const DEFAULTS = {
   redactArguments: true,
   cacheEnabled: true,
   cacheTtlMs: 30000,
-  prefilter: true,
-  skipTools: [],
-  deniedTools: [],
-  allowedTools: [],
-  allowedHosts: [],
-  blockedHosts: [],
   maxStateChars: 8000,
   maxArgChars: 2000,
   stateTemplate:

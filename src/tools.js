@@ -20,11 +20,6 @@ export function isMutationTool(tool) {
   return ["write", "edit", "patch"].includes(canonicalTool(tool))
 }
 
-export function listsTool(list, tool) {
-  const wanted = canonicalTool(tool)
-  return list.some(entry => typeof entry === "string" && canonicalTool(entry) === wanted)
-}
-
 // 1.x write, edit and read take `filePath`; 2.x takes `path`. Every listed
 // path counts as evidence, so a call that carries both is judged on both.
 export function pathsOf(args) {

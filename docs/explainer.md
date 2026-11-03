@@ -6,13 +6,7 @@ oc-one-guard checks a proposed OpenCode tool call before it runs. It is a heuris
 
 ```mermaid
 flowchart TD
-    A[Tool call proposed] --> B[Scan arguments for blocked URL hosts]
-    B -->|Blocked host or incomplete scan| X[Block]
-    B -->|No match| C[Apply tool overrides]
-    C -->|deniedTools| X
-    C -->|skipTools or allowedTools| Y[Allow without judge]
-    C -->|No outbound surface| Y
-    C -->|Needs review| D[Send state to System One judge]
+    A[Tool call proposed] --> D[Send state to System One judge]
     D -->|Below 0.50| Y
     D -->|0.50 to below 0.70| E[Block for manual review]
     D -->|0.70 or higher| X
@@ -23,10 +17,9 @@ flowchart TD
 If Mermaid does not render where you're reading this, here's the same flow in plain text:
 
 1. OpenCode proposes a tool call. The plugin checks it in the `tool.execute.before` hook, before the tool runs.
-2. The local blocked-host scan checks explicit URLs in argument strings and object keys. A matching host, or an incomplete scan, blocks the call before overrides or the judge.
-3. Tool policy runs. `deniedTools` blocks; `skipTools` and `allowedTools` bypass the judge. A prefilter also allows calls with no detected outbound surface.
-4. Calls still needing review go to the configured primary System One judge. If that request times out and an optional fallback is configured, the same state is sent to the fallback.
-5. The result allows, escalates, or blocks the proposed call.
+2. Every call goes to the configured primary System One judge. No tool list, host list or prefilter decides before it.
+3. If the judge request times out and an optional fallback is configured, the same state is sent to the fallback.
+4. The result allows, escalates, or blocks the proposed call.
 
 ## What do the thresholds mean?
 
