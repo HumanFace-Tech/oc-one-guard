@@ -13,3 +13,4 @@ These records describe accepted design constraints. The implementation and tests
 - [0009 - Adopt the E02 default question](0009-e02-default-question.md)
 - [0010 - Use fallback only after a primary timeout](0010-timeout-only-fallback.md)
 - [0011 - Support OpenCode 2.x through a shared core and host adapters](0011-opencode-v2-adapter.md)
+- [0012 - Per-session switch for the guard on OpenCode 2.x](0012-session-toggle.md)

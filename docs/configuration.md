@@ -12,7 +12,7 @@ The sample in [`config.example.json`](../config.example.json) chooses a differen
 
 | Setting | Built-in default | Effect |
 |---|---|---|
-| `enabled` | `true` | Disables judge evaluation when false. The plugin-level blocked-host scan still runs. |
+| `enabled` | `true` | Disables judge evaluation for the whole plugin when false. On OpenCode 2.x, `/guard.off` switches the guard off for one session instead; see [Turning the guard off for one session](#turning-the-guard-off-for-one-session). |
 | `endpoint` | `http://127.0.0.1:8081/v1/systemone` | Full System One decision API URL. |
 | `model` | `h1-decision-4b` | Model id sent to the judge. |
 | `apiKey` | `""` | Optional bearer credential. Prefer `apiKeyEnv` for secrets. |
@@ -88,3 +88,15 @@ Judge outputs are not calibrated probabilities. With default thresholds, a signa
 Cancellation targets only the calling session and its verified ancestors, root first, without deleting or closing the conversation. Lookups and abort requests each have a two-second total deadline. Partial ancestry or SDK failures fall back to blocking the call and a sanitized interrupt warning. Tools in the affected chain block while cancellation is pending; this is transient, so a new user message can resume work afterward.
 
 The plugin observes new `chat.message` IDs and rejects stale cancellation requests before scheduling and dispatch. OpenCode's public session abort API is not atomic per run: a new message arriving after dispatch can still race an abort already in flight. Missing chat events also limit generation tracking. Use OpenCode's interrupt control if cancellation cannot be confirmed. See [ADR 0007](adr/0007-risk-bands-and-run-cancellation.md) and [security and data handling](security.md).
+
+## Turning the guard off for one session
+
+Keep `enabled: true` in the config so every session is reviewed by default. On OpenCode 2.x the plugin adds three slash commands:
+
+| Command | Effect |
+|---|---|
+| `/guard.off` | Stops reviewing tool calls in this session and in the subagent sessions below it. |
+| `/guard.on` | Reviews tool calls in this session again. |
+| `/guard.status` | Says whether the guard is reviewing this session. |
+
+Each command adds a notice to the conversation and does not start a model turn. The switch lives in memory, so restarting the OpenCode service turns the guard back on everywhere. A session whose parent cannot be read keeps the guard on. `/guard.off` has no effect when the config sets `enabled: false`, and `/guard.status` reports that. Files written while the guard is off are not remembered as judge context. The commands are not available on OpenCode 1.x, where `enabled` is the only switch.

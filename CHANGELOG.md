@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- Adds `/guard.off`, `/guard.on` and `/guard.status` on OpenCode 2.x. `/guard.off` stops review for one session and its subagents until `/guard.on` or a service restart. The `enabled` config key still defaults to `true`. See [ADR 0012](docs/adr/0012-session-toggle.md).
+
 ## 0.3.0
 
 - **Breaking:** the judge decides every tool call. Removed the tool deny, skip and allow lists, the blocked-host list, the no-outbound-surface prefilter, the "content is unknown" and ambiguous-path denies, and the refusal of write calls without a call ID. The keys `deniedTools`, `skipTools`, `allowedTools`, `allowedHosts`, `blockedHosts` and `prefilter` are now ignored.

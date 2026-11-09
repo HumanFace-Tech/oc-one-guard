@@ -1,6 +1,6 @@
 {
   "name": "oc-one-guard",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "OpenCode plugin (v1 and v2) that checks proposed tool calls for outbound data exfiltration with a local decision-model judge",
   "type": "module",
   "main": "./index.js",
